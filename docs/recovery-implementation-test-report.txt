@@ -1,0 +1,187 @@
+SetupVault guided recovery: Fedora VM acceptance report
+Date: 2026-10-24
+Verdict: PASS for the executed final acceptance cases after fixes and retests.
+
+Final tested implementation
+Commit e8fd05eb1587e6698293adab0ea5698459a414a6
+RPM setupvault-0.3.0-5.fc44.x86_64.rpm
+SHA256 8af3393e5243a97cc41928e59beab1101d8a33bd1d3a065ed31831412ceab705
+
+Earlier candidates and traceability
+612c890941e6ddddc7097679d66ebe8ec1b4adac, 0.3.0-1:
+SHA256 c7d578fd97a315c9fce109c2b22af05af51259107fd2f8da8d9d5ac722bec612
+1122f6db038d19103c3f8a405654146ad4420223, 0.3.0-2:
+SHA256 2a49098d427c66c30d42b9466ea0ed80a1a728840f13cef61afc8f92afa60203
+41d148f1fddbfaf422cb709aa33de126058bcd71, 0.3.0-3:
+SHA256 1cc7398be185879b5372357724a8d8a15142e1ecb37d6ba68df38505e646e18b
+
+Candidates 1-2 exposed issues listed below. Candidate 3 passed the natural native
+installer/permissions retest. Candidate 5 passed asynchronous interruption and
+resume, root transaction-stop boundaries, missing-source approval, incomplete
+preparation rejection, missing-rclone actionability and TUI Start/completion.
+Unchanged file/GNOME/Undo/security/legacy paths were exercised on candidates 1-3.
+
+Environment and isolation
+Fedora 44 x86_64, GNOME Shell 50.6, restic 0.19.1, Flatpak 1.18.4 and rclone 1.75.2.
+Go was absent. RPMs supplied the app; Python pexpect/pyte were VM-only test tools.
+dbus-daemon supplied dbus-run-session and is declared as an RPM dependency.
+
+A new independent qcow2 overlay was created from the existing powered-off Fedora
+GNOME recovery VM. Earlier disks and reports were preserved. This was a fresh
+target account in an installed Fedora VM, not another installation from scratch.
+Generated source settings used an isolated vaulttest-owned HOME (UID 1000).
+The real fresh target account svrecovery (UID 1001) had its own GNOME session,
+home, keyring and systemd user manager. Restored personal files from the base VM
+were not selected as test sources. Host settings and backup repositories were
+not changed by this testing agent.
+
+Repository transport was local restic repositories inside the VM. Real packages
+came from configured Fedora RPM repositories and Fedora OCI Flatpak remotes.
+This guided-recovery suite did not use cloud OAuth or the personal Dropbox
+repository. The earlier separate Dropbox backup/verify/restore roundtrip is
+documented in docs/e2e-test-report.txt; it is not a cloud automatic-recovery test.
+
+Executed cases
+
+R01 Inert preparation and new-account mapping: PASS
+Created a real source backup with the new recovery inventory, exported its
+encrypted profile, imported into UID 1001/home, and reconnected the copied local
+encrypted repository. Import left scheduling/system access off. Planning resolved
+an immutable snapshot and private verified staging without changing live files
+or installing apps. Expanded shell files were captured. Different/identical files,
+protected paths, outside-home mapping notices and unresolved symlink reasons were
+visible. Missing administrator authorization rejected Apply without starting it.
+
+R02 Real RPM installation: PASS after repair
+Installed tree and hello to build the source inventory, then removed those fixture
+apps before recovery. Authorized detached recovery installed the real missing RPMs.
+rpm queries confirmed results; an unreviewed info weak dependency stayed absent.
+After the fixed native transaction, all six public libdnf5 state TOMLs remained
+0644 root:root. A subsequent unprivileged full apps/settings backup was Healthy
+and successfully recorded RPM inventory. Private recovery job files retained
+their explicit private modes.
+
+R03 Real Flatpak scopes and source approval: PASS after repair
+Restored ca.desrt.dconf-editor in user scope and app.drey.MultiplicationPuzzle in
+system scope; installed-ref queries confirmed both. A natural candidate-3 system
+job completed without terminating helpers manually, and its root service became
+inactive/dead with MainPID 0 and no remaining OCI authenticator process.
+
+On candidate 5, a fixture using a missing user remote alias showed Needs source
+approval and rejected Apply. Explicit --approve-source user:sv-e2e-approved then
+performed native remote-add and an actual user app installation. Its installed
+origin matched the approved alias. The existing system Fedora remote was kept.
+This exercised Fedora OCI identity/URL approval; a new GPG-signed remote was not
+tested in the VM.
+
+R04 Applied user files and manual apps: PASS
+Restored native/Flatpak config, custom home settings, terminal/shell/prompt files,
+theme/icon/font/background files, an actual ELF manual executable and relative
+symlink into the different real home. Manual executable mode 0755 and UID 1001
+ownership were checked. A missing internal link was Blocked and explicitly
+skipped. Shell-file execution markers stayed absent; copied executables were not
+launched automatically. The login shell and target rclone configuration were kept.
+
+R05 Real GNOME application: PASS
+Read back dark appearance, weekday display and mapped target-home wallpaper URI
+through real GNOME settings. Compatible extension UUID was selected for enabling;
+the incompatible one was excluded. A removed/unknown core preference was Skipped
+with a reason. An unselected machine-specific touchpad preference remained false.
+Machine/account identity-file checksums were unchanged. Extension files and enabled
+preferences were checked; a logout/login extension-runtime cycle was not repeated.
+
+R06 Asynchronous CLI/TUI and waiting: PASS on final 5
+Used real PTYs at 80x24. While an owned job was deliberately paused after worker
+startup, --wait timed out with exit 124 and left the accepted job active without
+writing a cancel marker. Progress used JSON stderr and stdout remained one JSON
+response. TUI navigation stayed responsive, fixed header/footer stayed visible,
+q detached, and reopening selected the same older active job ahead of a newer
+Ready plan. A second mutation/job was rejected while read-only status remained
+available. A separate TUI review -> a Start action restored an actually missing
+generated file and rendered Completed.
+
+R07 Interruption, safe stop and Resume: PASS on final 5
+SIGKILL of an owned user worker produced Interrupted; Resume reconciled and
+completed 400 generated settings files. A separate Cancel during real partial
+file copying produced Canceled. Resume completed all files and preserved mtimes
+of completed checkpoints rather than copying them again.
+
+A real two-system-Flatpak batch was stopped after its first app transaction
+completed. The second app remained absent. The protected root-created one-byte
+stop control was root:1001 mode 0660 and contained 1. Resume installed only the
+remaining reviewed system app and completed. This proves a real inter-transaction
+stop; cancellation inside an RPM commit was not forced.
+
+R08 Conflicts and Undo: PASS
+A destination edit after plan review was rejected before any copy. After restoring
+the reviewed fixture, application succeeded. Undo restored original user-file
+bytes/modes and GNOME values and removed owned newly copied files. A newer edit
+to an applied config and GNOME preference was preserved, with Undo needs attention
+and per-item reasons. Installed packages were not treated as settings rollback.
+
+R09 Trust-boundary checks: PASS
+Actual destination symlink escape and tampered traversal path/job ID were rejected
+without changing outside markers. Protected self/rclone/dconf-binary paths were
+filtered. Eight real privileged-helper rejection cases covered nonroot invocation,
+package options, local RPM paths, shell syntax, unknown command fields, unsafe job
+ID, user-scope requests to the system worker and input larger than 8 MiB. No injected
+marker or request job was created by those invalid requests.
+
+R10 Failure handling and old backups: PASS
+A fabricated unavailable RPM was individually Blocked with a reason; Apply was
+refused until explicit skip, then the remaining selected work completed. A genuine
+0.2.2 text-inventory backup remained plannable, and files its older collector did
+not capture were not claimed present. On final 5, an intentionally damaged cloned
+fixture repository caused real restore/verification preparation failure; Apply
+and Resume could not convert that incomplete preparation into an empty success.
+
+Missing-rclone follow-up: PASS with stated simulation
+Used an isolated PATH while leaving the actual VM package installed. CLI
+--connections --json returned exit 3/dependency_missing with the Fedora dnf install
+command. TUI showed Install rclone. A test-only pkexec stub simulated canceled
+authorization and the TUI displayed a clear cancellation error. This exercised
+the error path, not a real canceled polkit dialog or real dependency removal.
+
+Observed issues and repair/retest trace
+1. Candidate 1 misclassified system Fedora OCI metadata authorization failure as
+   unavailable. Candidate 2 reported Needs authorization; candidate 3 naturally
+   preflighted/installed it with a private root bus.
+2. Candidate 1 replay enabled weak dependencies omitted by the reviewed transaction.
+   DNF correctly rejected the extra info package. Matching replay options fixed it;
+   real candidate-2/3 RPM installations passed with strict extras rejection retained.
+3. Candidate 2 hung after successful OCI deployment because an orphan authenticator
+   retained captured stdout/stderr pipes. Matching pipe inodes were recorded. The
+   owned orphan was terminated only to unblock diagnosis; that workaround was not
+   counted as a successful retest. Candidate 3's bounded wait completed naturally.
+4. Candidate 2's privileged UMask 0077 made global DNF TOMLs unreadable to users.
+   Modes were recorded, then only beta-created root-owned regular VM metadata was
+   repaired. Candidate 3 used 0022 for native package work, kept private job modes,
+   and passed a fresh real transaction plus unprivileged full-backup retest.
+5. Candidate 2 reconnected to a newer Ready plan instead of an older active job.
+   Final 5 passed the older-active/newer-Ready TUI test and fixed-frame checks.
+6. Parent code review added root per-transaction stop controls and rejection of
+   incomplete preparation. Both received the real final-5 tests described above.
+
+An initial stress harness paused the service before its exec/start handshake,
+interrupting queue acceptance rather than waiting on an accepted job. It was
+corrected to pause only persisted Running workers, and the case passed. Raw ANSI
+matching also missed a very fast TUI Started message replaced by Completed; stored
+job/file checks confirmed the real Start action and displayed completion.
+
+Evidence and cleanup
+Private host evidence: ~/.local/state/setupvault-recovery-e2e-test/
+Raw source logs: /home/vaulttest/setupvault-recovery-e2e/evidence/ in the test VM.
+Raw target logs: /home/svrecovery/recovery-test/evidence/ in the test VM.
+Evidence includes exact JSON results, source snapshots, ANSI/screen captures,
+root pipe/mode diagnostics, checkpoint facts and per-candidate RPM hashes.
+Only this sanitized report is intended for Git. Credentials are kept private.
+The independent VM is powered off after evidence capture; prior disks/reports
+are preserved. Fixture packages/remotes and generated data remain in its offline
+overlay for reproduction. No live cloud test data was created by this suite.
+
+Limits
+Generated fixtures were tested, not a full automatic recovery of the personal
+host backup. No Google Drive/OneDrive, different Fedora release/architecture,
+physical hardware, real power loss, network-failure download recovery, locked-key
+policy, or forced mid-RPM-commit cancellation was exercised. The earlier cloud
+roundtrip does not substitute for automatic recovery over each cloud transport.
