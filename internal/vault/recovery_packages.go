@@ -459,6 +459,9 @@ func (a *App) SelectRecovery(ctx context.Context, id string, groups, skip, skipF
 			return j, err
 		}
 	}
+	if !j.Selected("apps") {
+		j.ApprovedSources = nil
+	}
 	dir, _ := a.recoveryDir(id)
 	stage := filepath.Join(dir, "stage")
 	r, err := os.OpenRoot(stage)

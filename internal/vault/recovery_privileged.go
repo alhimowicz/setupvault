@@ -143,6 +143,9 @@ func AuthorizeRecoveryPackages(ctx context.Context, input io.Reader) error {
 	if err = rootJSON(filepath.Join(dir, "result.json"), packageResult{Status: "Queued", Phase: "Package installation queued"}, gid); err != nil {
 		return err
 	}
+	if err = preparePackageStop(dir, gid); err != nil {
+		return err
+	}
 	args := []string{"--quiet", "--collect", "--service-type=exec", "--unit=" + packageUnit(uid, request.ID), "--property=UMask=0022", "--property=KillMode=mixed", "--property=TimeoutStopSec=10min", "/usr/bin/setupvault", "internal-recovery-packages", uid, request.ID}
 	if _, err = commandOutput(ctx, "/usr/bin/systemd-run", args...); err != nil {
 		return err
@@ -185,6 +188,10 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 		if result != nil {
 			status.Status = "Failed"
 			status.Error = result.Error()
+			if errors.Is(result, context.Canceled) {
+				status.Status = "Canceled"
+				status.Phase = "System installation stopped after the current transaction"
+			}
 		} else {
 			status.Status = "Completed"
 			status.Phase = "Selected system packages installed"
@@ -195,6 +202,9 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 		return err
 	}
 	for _, p := range r.Flatpaks {
+		if packageStopRequested(dir) || ctx.Err() != nil {
+			return context.Canceled
+		}
 		if err = checkFlatpakRemote(ctx, p); err != nil {
 			return err
 		}
@@ -218,6 +228,9 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 			return errors.New("package transaction changed since review; prepare a new plan")
 		}
 		if len(actual) > 0 {
+			if packageStopRequested(dir) || ctx.Err() != nil {
+				return context.Canceled
+			}
 			status.Phase = "Installing approved RPM transaction"
 			if err = save(); err != nil {
 				return err
@@ -229,8 +242,8 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 		}
 	}
 	for _, p := range r.Flatpaks {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if packageStopRequested(dir) || ctx.Err() != nil {
+			return context.Canceled
 		}
 		if err = checkFlatpakRemote(ctx, p); err != nil {
 			return err
@@ -243,7 +256,47 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 			return err
 		}
 	}
+	if packageStopRequested(dir) || ctx.Err() != nil {
+		return context.Canceled
+	}
 	return nil
+}
+
+func preparePackageStop(dir string, gid int) error {
+	f, err := os.OpenFile(filepath.Join(dir, "stop"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err = f.Chown(0, gid); err != nil {
+		return err
+	}
+	if err = f.Chmod(0660); err != nil {
+		return err
+	}
+	_, err = f.Write([]byte{'0'})
+	return err
+}
+
+func packageStopRequested(dir string) bool {
+	f, err := os.Open(filepath.Join(dir, "stop"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var value [1]byte
+	_, _ = f.Read(value[:])
+	return value[0] == '1'
+}
+
+func requestPackageStop(dir string) error {
+	f, err := os.OpenFile(filepath.Join(dir, "stop"), os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write([]byte{'1'})
+	return err
 }
 
 func checkFlatpakRemote(ctx context.Context, p RecoveryPackage) error {

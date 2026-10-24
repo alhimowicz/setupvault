@@ -1,5 +1,6 @@
 SetupVault: guided setup recovery
-Status: proposed design; automatic recovery is not implemented yet.
+Status: first implementation in 0.3.0. This document retains the target design;
+see implementation notes below and the execution report for tested behavior.
 
 Outcome
 After reinstalling Fedora or moving to another PC, import the encrypted recovery
@@ -305,3 +306,18 @@ Flatpak scopes/remotes: https://docs.flatpak.org/en/latest/using-flatpak.html
 GNOME system extensions: https://help.gnome.org/system-admin-guide/extensions-enable.html
 GNOME extension metadata: https://gjs.guide/extensions/overview/anatomy.html
 Installed dnf5/flatpak help and the current SetupVault source/inventory formats.
+
+Implementation notes (0.3.0)
+The core plan/review/apply flow, detached systemd installer, CLI flags, per-item
+reasons, resume, safe stop and user-settings Undo are implemented. Missing public
+Flatpak sources require explicit URL/signing-identity approval. RPM sources must
+already be configured on the target; source installation from the system archive
+is manual. Dependencies are resolved before approval; a resumed RPM transaction
+may omit completed work but cannot introduce unreviewed package changes.
+
+This first version does not install VS Code extensions automatically, apply /etc,
+rewrite arbitrary application configurations, roll back packages or restart jobs
+automatically after reboot. Use Resume after an interrupted worker. The user
+systemd manager must stay active for detached recovery. Detail screens and the
+JSON report provide per-item reasons; a visual diff viewer, report opener and
+package download estimates remain future interface work.

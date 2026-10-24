@@ -179,6 +179,12 @@ func (a *App) CancelRecovery(id string) (*RecoveryJob, error) {
 	if err = writePrivate(filepath.Join(dir, "cancel"), []byte("stop after current transaction\n")); err != nil {
 		return j, err
 	}
+	if j.Privileged && j.Active() {
+		rootdir, _ := packageJobDir(strconv.Itoa(os.Getuid()), j.ID)
+		if err = requestPackageStop(rootdir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return j, fmt.Errorf("stop requested locally; notify system installer: %w", err)
+		}
+	}
 	if !j.Active() {
 		j.Status = "Canceled"
 		j.Phase = "Recovery canceled"
@@ -324,6 +330,9 @@ func (a *App) runRecoveryJob(ctx context.Context, id string) (result error) {
 			}
 			if r.Status == "Failed" {
 				return errors.New(r.Error)
+			}
+			if r.Status == "Canceled" {
+				return context.Canceled
 			}
 			if r.Status == "Completed" {
 				break

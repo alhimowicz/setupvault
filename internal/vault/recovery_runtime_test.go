@@ -86,3 +86,17 @@ func TestDesktopTerminalRecoveryKeys(t *testing.T) {
 		t.Fatal("machine preference was included")
 	}
 }
+
+func TestPackageStopControlIsExplicitAndBounded(t *testing.T) {
+	dir := t.TempDir()
+	put(t, filepath.Join(dir, "stop"), "0")
+	if packageStopRequested(dir) {
+		t.Fatal("new package job was already stopped")
+	}
+	if err := requestPackageStop(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !packageStopRequested(dir) {
+		t.Fatal("system installer did not observe the stop request")
+	}
+}

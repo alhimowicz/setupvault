@@ -2,7 +2,7 @@
 
 Name:           setupvault
 Version:        0.3.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
 URL:            https://github.com/alhimowicz/setupvault

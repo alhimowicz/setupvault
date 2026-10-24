@@ -7,12 +7,12 @@ A Go terminal app for backing up a Fedora/GNOME setup to an encrypted, versioned
 ## Run
 
 ```sh
-sudo dnf install restic rclone libsecret dconf flatpak
+sudo dnf install restic rclone libsecret dconf flatpak polkit systemd dnf5 dbus-daemon procps-ng glib2 gnupg2
 go install github.com/alhimowicz/setupvault/cmd/setupvault@latest
 setupvault
 ```
 
-Go installs the executable into `GOBIN`, or `$(go env GOPATH)/bin` by default; add that directory to your `PATH`. Go installation provides the terminal app. Use the Fedora RPM for the optional protected system export helper and desktop app-menu entry.
+Go installs the executable into `GOBIN`, or `$(go env GOPATH)/bin` by default; add that directory to your `PATH`. The Fedora RPM installs runtime dependencies and provides the protected helpers for system export and RPM/system Flatpak recovery. Go installation provides the TUI, CLI, file recovery and user Flatpak recovery; install the RPM for system app installation. When rclone is missing, Connections shows the reason and offers **i: Install rclone**, with administrator authentication. Local-folder backups do not require rclone.
 
 To build a checkout instead:
 
@@ -29,7 +29,7 @@ Building requires Go 1.26 or newer. SetupVault runs as your desktop user. The in
 4. Press `b` to back up. Overview shows the destination, previous backup, verification, next scheduled run and cloud quota when available. Activity shows results. An incomplete backup is reported as partial, never healthy.
 5. After checking a restore, set a schedule with `s` in Settings, for example `daily` or `*-*-* 19:00:00`. Use `off` to disable it. Keep the executable at its installed path after scheduling.
 
-Tab / Shift+Tab changes pages, arrows select, Esc cancels a task, and `q` quits. The app has no persistent web server.
+Tab / Shift+Tab changes pages, arrows select, Esc cancels a foreground task, and `q` quits. After recovery starts, `q` leaves its detached installer running; Restore → **c** requests a stop after the current transaction. The app has no persistent web server.
 
 Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. Page Up / Page Down scroll content on small terminals while navigation help stays visible. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
 
@@ -82,7 +82,7 @@ The TUI requires the foreground terminal. If a shell reports `suspended (tty inp
 | --- | --- |
 | GNOME | dconf export, extensions, themes, icons, fonts, custom backgrounds |
 | Apps | User-installed RPM names, Flatpak IDs/origins/branches/installations, Flatpak remote details, VS Code extension IDs when found |
-| App settings | `~/.config`, shell configuration, launchers, Flatpak overrides and installed Flatpak `config` directories; selected known preferences stored elsewhere |
+| App settings | `~/.config`, shell configuration (`.bashrc`, `.bash_profile`, `.profile`, `.bash_aliases`, `.bash_logout`, `.inputrc`, `.zshrc`, `.zprofile`, `.zshenv`, `.zlogin`, `.zlogout`, `.p10k.zsh`, `.oh-my-zsh`), launchers, Flatpak overrides and installed Flatpak `config` directories; selected known preferences stored elsewhere |
 | System (opt in) | Separate archive of `/etc` and `/usr/local`, including custom DNF repository definitions; account databases, machine ID and SSH host keys excluded |
 | Manual apps (opt in) | `~/AppImages`, `~/.local/bin`, `~/.local/opt`, `~/opt`, user plugins |
 | Custom paths | Additional files or folders you explicitly include |
@@ -101,12 +101,29 @@ Packaged applications are represented by installation lists, not copies of RPMs 
 
    The password prompt is hidden. Import refuses to overwrite an existing profile; use separate `--config-dir` and `--state-dir` options if needed. Home paths are adapted to the new user. Scheduling and administrator access stay off.
 2. Reconnect the cloud account under Connections. Select the **same remote name and backup folder** saved in your profile, or update the destination to the reconnected name.
-3. Open Restore, press `r`, select a dated snapshot and press Enter. Restore writes into a new empty folder, preserving the original absolute path structure inside it. It never writes directly over your live home directory or `/`.
-4. Review the restored `inventory` folder, reinstall the listed RPM/Flatpak apps from their original repositories, then copy the selected settings into your new home. Load GNOME preferences with `dconf load -f / < gnome-settings.dconf` from that restored inventory. Locked system-policy keys are skipped. Log out and back in afterward. Apply system configuration selectively with administrator access; hardware and Fedora versions can differ.
+3. Open Restore, press `r`, select a dated snapshot and press Enter for **Restore my setup**. SetupVault downloads and verifies the snapshot into private staging, then presents a review. Preparing the plan does not install apps or replace live settings. **e: Extract files only** keeps the separate-folder restore option.
+4. Review categories; **p** lists apps, **f** lists files and **d** shows details, including the full proposed RPM transaction. Space deselects categories or individual items. Resolve or deselect blocked entries. On the app screen, **s** reviews missing Flatpak sources; Space explicitly approves adding the displayed HTTPS source and signing identity. Private sources need manual configuration. Custom DNF repositories must already be configured on the target.
+5. Press **a** to start. Authenticate once for selected RPM/system Flatpak installations. Native package managers install apps before selected settings are applied. The TUI remains responsive; close it and reopen Restore to reconnect to the job. **c** stops at a safe boundary. **a** resumes a stopped job after reconciling completed installs. CLI timeouts stop waiting without canceling recovery.
+6. Inspect the completion report and per-item reasons. **u: Undo settings** restores previous files and desktop keys, preserving subsequent edits. Installed packages remain installed. Log out and back in when requested; SetupVault never logs out automatically. Re-enable backup scheduling explicitly afterward.
 
-**This first version stages restored files and installation lists; applying settings and reinstalling packages remain manual.** It is not an OS image, and cannot promise identical hardware-dependent settings or that an old package still exists.
+```sh
+setupvault --plan-recovery --snapshot latest --password-file /private/recovery-password --json
+setupvault --plan-recovery --job JOB_ID --skip-file .local/bin/broken-link --json
+setupvault --plan-recovery --job JOB_ID --approve-source user:flathub --json
+setupvault --apply-recovery --job JOB_ID --allow-interaction --json
+setupvault --recovery-status --job JOB_ID --json
+setupvault --cancel-recovery --job JOB_ID --json
+setupvault --resume-recovery --job JOB_ID --allow-interaction --wait --progress --json
+setupvault --undo-recovery-settings --job JOB_ID --json
+```
 
-The [guided recovery design](docs/recovery-design.txt) proposes automatic app installation and settings application with background progress, resume and settings undo. It describes planned behavior, not an implemented feature.
+Use the returned `id` in place of `JOB_ID`. `--recovery-status` without `--job` lists jobs. `--select`, repeated `--skip-app NAME_OR_ID` and repeated `--skip-file RELATIVE_HOME_PATH` edit a ready plan; supplied lists replace their previous skip lists. `--approve-source SCOPE:REMOTE` binds approval to the source URL and signing identity in that reviewed plan. Apply/resume normally return after queuing; add `--wait` to follow completion. These actions use saved verified staging and need no repository password after preparation.
+
+Automatic recovery supports available RPMs and Flatpak apps, captured shell and application files, compatible GNOME preferences, GNOME Terminal/Ptyxis/Console preferences, and captured manual binaries. Existing app versions are kept. Hardware/boot packages, unsupported preferences and incompatible GNOME extensions are reported or skipped. Raw dconf databases, SetupVault's own settings, current rclone credentials and machine display settings are protected. Close applications before applying their preferences; running-app conflicts are reported for retry. Old absolute paths are adapted only in supported desktop launchers and wallpaper URIs; arbitrary application settings may need adjustment. Manual apps are copied, never executed during import.
+
+System archives remain staged for selective administrator review. VS Code extension IDs are recorded, but extension installation is still manual. This is setup recovery, not a full OS image or package rollback. Recovery survives closing the TUI while the user systemd manager remains active; after logout, reboot or an interrupted worker, reopen and Resume. Staging and Undo copies consume local disk until removed after successful validation. Do not remove them during an active job.
+
+The [recovery design](docs/recovery-design.txt) describes the intended flow and records the first implementation's remaining limits.
 
 If you lose the profile file but have the password, choose the existing repository, set its password, and load Restore. Snapshots remain standard [restic repositories](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html), recoverable without SetupVault.
 
@@ -136,7 +153,7 @@ make test                 # race detector + real local restic backup/restore
 make rpm                  # requires golang, rpm-build, systemd-rpm-macros
 ```
 
-The [Fedora VM test plan](docs/e2e-test-plan.txt) and [execution report](docs/e2e-test-report.txt) document end-to-end CLI/TUI recovery, cancellation, lock safety and desktop checks, including the tested builds and limits.
+The [Fedora VM test plan](docs/e2e-test-plan.txt) and [execution report](docs/e2e-test-report.txt) document the original end-to-end CLI/TUI checks. The [guided recovery report](docs/recovery-implementation-test-report.txt) covers actual reinstalls, desktop settings, Undo, detached jobs and the tested builds and limits.
 
 The live cloud test uploads only generated fixture settings into a new random `SetupVault-Tests` directory and deletes its own directory afterward:
 
@@ -144,7 +161,7 @@ The live cloud test uploads only generated fixture settings into a new random `S
 SETUPVAULT_TEST_REMOTE=my-dropbox go test -run TestCloudBackupRestore -count=1 -v ./internal/vault
 ```
 
-RPMs and source RPMs are written under `dist/rpmbuild`. Install a locally built RPM with `sudo dnf install ./dist/rpmbuild/RPMS/$(uname -m)/setupvault-*.rpm`. Then open **SetupVault** from the app menu or run `setupvault`. Contents → `s` authorizes the installed system export helper once. The helper only exports fixed system paths; it cannot apply user-supplied restore instructions as root.
+RPMs and source RPMs are written under `dist/rpmbuild`. Install a locally built RPM with `sudo dnf install ./dist/rpmbuild/RPMS/$(uname -m)/setupvault-*.rpm`. Then open **SetupVault** from the app menu or run `setupvault`. Contents → `s` authorizes the installed system export helper once. System export uses fixed paths. App recovery uses a separate authorized helper that accepts bounded package identifiers and a reviewed transaction; it never applies the staged system archive as root.
 
 The source archive includes vendored Go dependencies for builds without network access. The spec and GitHub Actions prepare packages for COPR; **no COPR repository or official Fedora package is published yet**. To publish, create a COPR project with a Fedora account and submit the source RPM:
 
