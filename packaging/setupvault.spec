@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           setupvault
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
@@ -73,5 +73,8 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.1.1-1
+- Exclude VS Code extension downloads and compiled caches from setup backups
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.1.0-1
 - Initial terminal interface, encrypted backup and safe staged restore

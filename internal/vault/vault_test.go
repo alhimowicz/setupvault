@@ -53,7 +53,7 @@ func roundTrip(t *testing.T, a *App) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	h := a.Profile.Home
-	for _, p := range []string{".config/example/cache/cached.bin", ".config/google-chrome/Default/Preferences", "Documents/personal.txt", ".config/dconf/user"} {
+	for _, p := range []string{".config/example/cache/cached.bin", ".config/example/CachedData/compiled.bin", ".config/example/CachedExtensionVSIXs/extension.vsix", ".config/google-chrome/Default/Preferences", "Documents/personal.txt", ".config/dconf/user"} {
 		put(t, filepath.Join(h, p), "must not be backed up")
 	}
 	put(t, filepath.Join(h, ".var/app/org.example.App/config/settings.ini"), "flatpak preference")
@@ -92,7 +92,7 @@ func roundTrip(t *testing.T, a *App) {
 			t.Fatalf("restored %s differs: %s, %v", p, got, err)
 		}
 	}
-	for _, p := range []string{".config/example/cache/cached.bin", ".config/google-chrome/Default/Preferences", "Documents/personal.txt", ".config/dconf/user"} {
+	for _, p := range []string{".config/example/cache/cached.bin", ".config/example/CachedData/compiled.bin", ".config/example/CachedExtensionVSIXs/extension.vsix", ".config/google-chrome/Default/Preferences", "Documents/personal.txt", ".config/dconf/user"} {
 		if _, err := os.Stat(filepath.Join(target, h, p)); !os.IsNotExist(err) {
 			t.Fatalf("excluded file restored: %s (%v)", p, err)
 		}

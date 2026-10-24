@@ -122,7 +122,7 @@ func (a *App) Sources() ([]string, error) {
 }
 
 func DefaultExclusions(home string) []string {
-	result := []string{"**/cache/**", "**/Cache/**", "**/Caches/**", "**/Code Cache/**", "**/GPUCache/**", "**/GPUPersistentCache/**", "**/DawnGraphiteCache/**", "**/DawnWebGPUCache/**", "**/Crashpad/**", "**/Service Worker/**", "**/blob_storage/**", "**/Session Storage/**", "**/IndexedDB/**", "**/logs/**", "**/Logs/**", "**/node_modules/**", "**/.git/**", "**/workspaceStorage/**", "**/History/**", "**/MetadataCaches/**", "**/Singleton*", "**/*.log", "**/*.sock", "**/*.pid", "**/*-journal", "**/heroic/tools/**", "**/Mail/**", "**/ImapMail/**"}
+	result := []string{"**/cache/**", "**/Cache/**", "**/Caches/**", "**/CachedData/**", "**/CachedExtensionVSIXs/**", "**/Code Cache/**", "**/GPUCache/**", "**/GPUPersistentCache/**", "**/DawnGraphiteCache/**", "**/DawnWebGPUCache/**", "**/Crashpad/**", "**/Service Worker/**", "**/blob_storage/**", "**/Session Storage/**", "**/IndexedDB/**", "**/logs/**", "**/Logs/**", "**/node_modules/**", "**/.git/**", "**/workspaceStorage/**", "**/History/**", "**/MetadataCaches/**", "**/Singleton*", "**/*.log", "**/*.sock", "**/*.pid", "**/*-journal", "**/heroic/tools/**", "**/Mail/**", "**/ImapMail/**"}
 	for _, n := range []string{"google-chrome", "chromium", "BraveSoftware", "microsoft-edge", ".mozilla", "Duplicati"} {
 		result = append(result, filepath.Join(home, ".config", n)+"/**")
 	}
