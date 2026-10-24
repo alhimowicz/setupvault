@@ -4,7 +4,7 @@ GO ?= go
 .PHONY: build test dist rpm clean
 build:
 	mkdir -p bin
-	$(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/setupvault ./cmd/setupvault
+	$(GO) build -buildvcs=false -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/setupvault ./cmd/setupvault
 
 test:
 	$(GO) vet ./...
