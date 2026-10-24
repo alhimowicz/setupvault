@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-type Remote struct{ Name, Type string }
+type Remote struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
 
 var sensitive = regexp.MustCompile(`(?i)(access_token|refresh_token|client_secret|authid|token|password)(["\s:=]+)[^\s&,"}]+`)
 
@@ -42,7 +45,11 @@ func (a *App) rclone(ctx context.Context, stdin []byte, args ...string) ([]byte,
 	return out.Bytes(), nil
 }
 
-type Quota struct{ Total, Used, Free uint64 }
+type Quota struct {
+	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+	Free  uint64 `json:"free"`
+}
 
 func (a *App) Quota(ctx context.Context) (Quota, error) {
 	var q Quota

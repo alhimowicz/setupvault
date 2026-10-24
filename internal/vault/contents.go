@@ -15,9 +15,11 @@ import (
 )
 
 type Group struct {
-	ID, Name, Note string
-	Paths          []string
-	Selected       bool
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Note     string   `json:"note,omitempty"`
+	Paths    []string `json:"paths"`
+	Selected bool     `json:"selected"`
 }
 
 var excludedApps = map[string]bool{"com.google.Chrome": true, "org.mozilla.firefox": true, "com.brave.Browser": true, "com.microsoft.Edge": true, "org.chromium.Chromium": true}

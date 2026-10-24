@@ -53,8 +53,44 @@ type App struct {
 	ConfigDir string
 	StateDir  string
 	Profile   Profile
-	// Tests provide an in-memory password; normal operation uses Secret Service.
+	// The CLI can supply a password for this invocation without touching the keyring.
 	password string
+}
+
+var ErrCredentialsRequired = errors.New("password unavailable: provide --password-file or --password-stdin, or unlock your desktop keyring")
+
+func (a *App) UsePassword(password string) error {
+	if err := validatePassword(password); err != nil {
+		return err
+	}
+	a.password = password
+	return nil
+}
+
+func validatePassword(password string) error {
+	if len(password) < 12 || len(password) > 4096 || strings.ContainsAny(password, "\r\n\x00") {
+		return errors.New("use a recovery password of 12–4096 characters, on one line")
+	}
+	return nil
+}
+
+// Search without --unlock never asks Secret Service to unlock a locked item.
+func (a *App) UseUnlockedKeyring(ctx context.Context) error {
+	query, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(query, "secret-tool", "search", "--all", "application", "setupvault", "profile", a.Profile.ID).Output()
+	if err != nil {
+		return ErrCredentialsRequired
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "secret = ") {
+			password := strings.TrimPrefix(line, "secret = ")
+			if password != "[not available]" && a.UsePassword(password) == nil {
+				return nil
+			}
+		}
+	}
+	return ErrCredentialsRequired
 }
 
 func New(configDir, stateDir string) (*App, error) {
@@ -235,8 +271,8 @@ func (a *App) StorePassword(ctx context.Context, password string) error {
 }
 
 func (a *App) storePassword(ctx context.Context, password string, verifyRepository bool) error {
-	if len(password) < 12 || len(password) > 4096 || strings.ContainsAny(password, "\r\n\x00") {
-		return errors.New("use a recovery password of 12–4096 characters, on one line")
+	if err := validatePassword(password); err != nil {
+		return err
 	}
 	if verifyRepository && a.Profile.Repository != "" {
 		probe := *a
@@ -341,8 +377,15 @@ func ReadRecovery(path, password string) (Profile, error) {
 }
 
 func (a *App) Import(ctx context.Context, path, password string) error {
-	if _, err := os.Stat(a.ProfilePath()); err == nil {
+	return a.ImportRecovery(ctx, path, password, true)
+}
+
+// Headless imports keep the password in memory unless keyring storage is requested.
+func (a *App) ImportRecovery(ctx context.Context, path, password string, storePassword bool) error {
+	if _, err := os.Lstat(a.ProfilePath()); err == nil {
 		return errors.New("a profile already exists; use a separate --config-dir to import safely")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	p, err := ReadRecovery(path, password)
 	if err != nil {
@@ -368,7 +411,12 @@ func (a *App) Import(ctx context.Context, path, password string) error {
 	old := a.Profile
 	a.Profile = p
 	// The encrypted profile authenticates this password; cloud sign-in may not exist yet.
-	if err = a.storePassword(ctx, password, false); err != nil {
+	if storePassword {
+		err = a.storePassword(ctx, password, false)
+	} else {
+		err = a.UsePassword(password)
+	}
+	if err != nil {
 		a.Profile = old
 		return err
 	}

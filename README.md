@@ -31,6 +31,49 @@ Building requires Go 1.26 or newer. SetupVault runs as your desktop user. The in
 
 Tab / Shift+Tab changes pages, arrows select, Esc cancels a task, and `q` quits. The app has no persistent web server.
 
+## CLI flags for scripts and agents
+
+Use ordinary flags for automation. `--json` returns one response on stdout, including failures, and implies noninteractive operation. `--help --json` lists the supported parameters. Existing commands such as `setupvault backup` and `setupvault restore ID NEW_FOLDER` still work.
+
+```sh
+setupvault --status --json
+setupvault --contents --json
+setupvault --connections --json
+setupvault --quota --json --timeout 30s
+
+setupvault --set-config --name MyPC \
+  --repository rclone:my-dropbox:PC-Setup-Backups/MyPC \
+  --select gnome,apps,settings,manual --keep-last 7 --json
+setupvault --set-config --include /absolute/custom/config \
+  --exclude '**/temporary/**' --json
+
+setupvault --backup --json --progress --timeout 2h
+setupvault --snapshots --json
+setupvault --restore --snapshot latest --target /absolute/empty/folder --json
+setupvault --export --file /safe/place/recovery.age --json
+setupvault --activity --lines 20 --json
+```
+
+Configuration flags are partial updates. `--select` replaces the group list; `--include` and `--exclude` add entries and can be repeated. `--remove-include` and `--remove-exclude` remove exact entries. An empty `--select=''` selects no presets. `--config-dir` and `--state-dir` choose an isolated profile; use both for separate profiles.
+
+Passwords are supplied through a private file or stdin, never as a password argument:
+
+```sh
+setupvault --backup --password-file /private/recovery-password --json
+setupvault --import --file /safe/place/recovery.age \
+  --password-stdin --json < /private/recovery-password
+```
+
+Password files must have private permissions (`chmod 600`). Stdin accepts one password line through EOF. A supplied password is kept in memory for that invocation. Without an explicit password, JSON mode searches the existing keyring item without requesting an unlock; a locked or missing item returns `credentials_required`.
+
+Noninteractive import saves the profile without storing the password in a desktop keyring. Continue supplying `--password-file` on later calls, or opt into desktop storage with `--store-password` during import. That explicit option may display an unlock prompt. `--set-password --password-file FILE --allow-interaction` stores a password separately for TUI use and scheduled backups. It verifies the password against an existing repository before replacing a keyring item.
+
+`--connect dropbox --allow-interaction` and `--enable-system --allow-interaction` permit browser or administrator authentication. `--schedule daily` enables scheduling and `--schedule off` disables it. Scheduled jobs require the password in an unlocked desktop keyring; per-invocation password files are not saved into timer units.
+
+Successful JSON responses have `{"cli_version":1,"ok":true,"data":...}`. Failures have `ok:false` and an `error` containing `code` and `message`. Exit codes are 0 for success, 1 for operation failure (including partial backups), 2 for invalid arguments, 3 for required credentials/interaction, 124 for timeout and 130 for cancellation. Backup errors also return the current backup state in `data`. With `--progress`, stderr contains separate JSON progress events; stdout remains a single final response.
+
+The TUI requires the foreground terminal. If a shell reports `suspended (tty input)`, run `fg` in that shell. Background launches are rejected before the interface changes terminal settings. Use the action flags for background jobs.
+
 ## What is saved
 
 | Group | Contents |

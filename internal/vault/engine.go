@@ -27,8 +27,11 @@ type Snapshot struct {
 }
 
 type Progress struct {
-	Phase                                string
-	Files, TotalFiles, Bytes, TotalBytes uint64
+	Phase      string `json:"phase"`
+	Files      uint64 `json:"files"`
+	TotalFiles uint64 `json:"total_files"`
+	Bytes      uint64 `json:"bytes"`
+	TotalBytes uint64 `json:"total_bytes"`
 }
 
 type commandError struct {
