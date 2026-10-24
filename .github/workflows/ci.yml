@@ -11,6 +11,8 @@ jobs:
     steps:
       - run: dnf install -y git golang make rpm-build systemd-rpm-macros restic rclone
       - uses: actions/checkout@v7.0.1
+      - name: Trust the mounted container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Check formatting
         run: test -z "$(gofmt -l cmd internal)"
       - run: make test build rpm
