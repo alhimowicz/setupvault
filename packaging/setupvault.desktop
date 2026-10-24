@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SetupVault
+Comment=Back up and recover your Fedora setup
+Exec=setupvault
+Icon=utilities-terminal
+Terminal=true
+Categories=System;Archiving;
+Keywords=backup;restore;settings;cloud;

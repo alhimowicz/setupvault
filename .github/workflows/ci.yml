@@ -1,0 +1,22 @@
+name: Build and test
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  fedora-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - run: dnf install -y git golang make rpm-build systemd-rpm-macros restic rclone
+      - uses: actions/checkout@v7.0.1
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal)"
+      - run: make test build rpm
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: fedora-rpms
+          path: |
+            dist/rpmbuild/RPMS/**/*.rpm
+            dist/rpmbuild/SRPMS/*.rpm

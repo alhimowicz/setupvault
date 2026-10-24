@@ -1,0 +1,8 @@
+/bin/
+/dist/
+/vendor/
+*.rpm
+*.age
+*.log
+coverage.out
+.env

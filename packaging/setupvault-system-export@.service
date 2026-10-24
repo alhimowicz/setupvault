@@ -1,0 +1,14 @@
+[Unit]
+Description=SetupVault protected configuration export for user %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/setupvault internal-system-export %i
+UMask=0027
+TimeoutStartSec=10min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/setupvault
