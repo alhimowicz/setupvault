@@ -134,6 +134,8 @@ make test                 # race detector + real local restic backup/restore
 make rpm                  # requires golang, rpm-build, systemd-rpm-macros
 ```
 
+The [Fedora VM test plan](docs/e2e-test-plan.txt) and [execution report](docs/e2e-test-report.txt) document end-to-end CLI/TUI recovery, cancellation, lock safety and desktop checks, including the tested builds and limits.
+
 The live cloud test uploads only generated fixture settings into a new random `SetupVault-Tests` directory and deletes its own directory afterward:
 
 ```sh

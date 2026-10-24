@@ -1,0 +1,167 @@
+SetupVault Fedora VM end-to-end report
+Date: 2026-10-24
+Verdict: PASS after repairing and retesting one small-terminal layout defect.
+
+Tested builds
+1. Commit 4c7744e145eddbed96abb7c6314709212d8c88bf
+   setupvault-0.2.2-1.fc44.x86_64.rpm
+   SHA256 5fb59bb981e3156ab4fcf1c275c4b7a8843bc7a1f691f136840797d0fae812cb
+   Used for CLI, real process cancellation, lock safety, systemd, protected export,
+   initial TUI workflows and the isolated Dropbox roundtrip.
+2. Commit d482f7e, with the same engine and additional TUI layout corrections
+   setupvault-0.2.2-2.fc44.x86_64.rpm
+   SHA256 6d26956a46b178fc6b37d1af9429f82e6782e8e873c1e162e9417e0f1d3b6671
+   Used for final 80x24 layout, complete normal TUI workflow, all TUI cancellation
+   paths, error scrolling and the additional GNOME/inventory recovery check.
+
+Environment and isolation
+Fedora 44 x86_64; GNOME Shell 50.6; kernel 6.19.10-300.fc44.x86_64;
+restic 0.19.1; rclone 1.75.2. Go was absent throughout the VM tests. RPM runtime
+dependencies were installed; Python pexpect/pyte were added only as test tools.
+
+The VM used an independent qcow2 overlay of the powered-off Fedora 44/GNOME
+recovery-test VM. This was an installed Fedora desktop clone, not another OS
+installation from scratch. Its base disk and earlier recovery report were kept.
+The clone had its own disk, firmware variables, logs, QMP socket and SSH port.
+
+Generated settings lived under a dedicated fixture HOME and separate config/state
+directories. The clone's recovered personal files and credentials were not selected
+as backup sources. A fixture-only password was stored in a private file and in
+separate test-profile keyring entries. Real account credentials were not included
+in evidence or this report. Dropbox testing used only a new random repository
+under SetupVault-Tests/e2e-*, which was removed afterward.
+
+Results against docs/e2e-test-plan.txt
+
+01 Installation and discovery: PASS
+Installed both candidate RPMs inside Fedora. Checked --version, --help and
+--help --json; runtime tools were available and Go was not installed. Validated
+the desktop entry's command and Terminal=true setting. The installed TUI also ran
+in a native GNOME Terminal window, with screenshots captured.
+
+02 CLI configuration and validation: PASS
+Exercised --set-config, --include, --remove-include, --exclude, --remove-exclude,
+--contents, --config and --status. Changes persisted. Invalid repository paths
+and conflicting actions returned exit 2 with one valid versioned JSON response;
+an invalid update did not alter the saved profile. Fixture passwords did not
+appear in captured command output, profile JSON or TUI transcripts.
+
+03 CLI complete recovery: PASS
+Backed up generated native settings, Flatpak config and a custom path using real
+restic. Listed snapshots and verified the backup. Exported an encrypted recovery
+profile with mode 0600; plaintext profile values/password were absent from it.
+Imported into fresh config/state with a different HOME. Scheduling and system
+access stayed disabled, and noninteractive import did not store the password.
+Restored into an empty directory and compared contents and mode 0600. Cache,
+browser-profile and Documents fixtures were excluded. Wrong-password import and
+restore into an occupied target were rejected without replacing existing files.
+
+An additional check generated an isolated dconf database, backed up and restored
+its exported GNOME preferences, and checked RPM/Flatpak inventory files. Loading
+the recovered dconf into the running VM desktop changed clock-show-weekday from
+false to true. Application inventories were staged; package reinstallation was
+not performed by SetupVault.
+
+04 TUI normal workflow: PASS
+Used real PTYs, first at 100x40 and finally at 80x24. Configured a local destination
+through the TUI, tested it, added/excluded/reincluded/removed a custom path and
+confirmed its original file survived removal. Stored the generated password in
+the real desktop keyring through the TUI. Ran backup, verification, snapshot
+discovery, encrypted profile export, import into a fresh TUI profile and restore.
+Restored fixture contents matched. Loading dots were observed during background
+refreshes and real operations; password text stayed masked.
+
+05 Keyboard, saved errors and layout: PASS after repair
+Nano exited with Ctrl+X and returned to SetupVault without Unknown sequence.
+Saved verification errors were visible after a restart. The first candidate
+wrapped a saved error but pushed the normal footer/status message below an
+80x24 screen. This was reproduced in native GNOME Terminal and reported.
+
+The d482f7e candidate passed the retest: the navigation/quit footer stays visible,
+PgUp/PgDn reaches both ends of a saved error longer than 2,700 characters and a
+long Activity error, Tab resets the viewport, and verification results/editor
+errors scroll into view. Native screenshots confirm the top and end of the long
+error with the footer visible. Resizing and a 50-column terminal were also checked.
+
+06 Graceful CLI cancellation: PASS
+Started real backups of a 2 GiB sparse fixture and waited for a committed restic
+lock file before signaling. SIGINT and SIGTERM returned exit 130. A deadline
+returned exit 124. Each process completed cleanup and left no repository lock;
+later verification succeeded without manual unlocking. A deadline can occur
+after a snapshot commits, so the report distinguishes that from an incomplete
+backup rather than assuming every timeout means no snapshot was saved.
+
+07 Graceful TUI cancellation and shutdown: PASS
+With a real repository lock present, tested Esc, q followed by y, Ctrl+C followed
+by y, SIGTERM and SIGHUP. Repeated the cases at 80x24 after the layout repair,
+including visible cancellation confirmation. No lock or worker remained after
+completion. Verification succeeded afterward. SIGHUP simulated terminal hangup;
+the VM itself was not power-cut during an active backup.
+
+08 Automatic stale-lock recovery: PASS
+Started an independent real restic process and waited for its lock. SIGKILL left
+a genuine stale lock after its PID exited. SetupVault CLI and TUI verification
+both recovered the stale lock and succeeded without manual unlock commands.
+
+09 Active-lock protection and concurrency: PASS
+Kept a conflicting real restic process alive. Verification returned a clear busy
+error after the stale-only cleanup/retry; the active lock and owner remained.
+After graceful owner exit, verification succeeded. A second same-profile verify
+was also rejected while SetupVault backup was running; the first job stayed
+alive and its Running state was not replaced. Canceling it cleaned up its lock.
+
+10 Verification status and reasons: PASS
+Changed only fixture verification metadata to cause a real sample-hash mismatch.
+The failed check saved its reason. After restoring the correct metadata, success
+cleared the old Verification failed status and obsolete error. If a genuinely
+newer backup had been canceled, the saved snapshot verified while the status
+remained Verified; backup incomplete. A subsequent complete backup and check
+returned Healthy with no error. TUI saved-error visibility and the final success
+message were checked again on the repaired layout.
+
+11 Scheduler and protected system export: PASS
+Enabled a test timer for a future date, checked its next-run status, and performed
+three actual systemd start/stop cycles while restic held the repository lock.
+All stops cleaned up. The generated service used its existing control-group
+kill mode. The owned timer was disabled and its units removed afterward.
+
+Authorized the installed protected export helper through real polkit terminal
+authentication in the VM. The root-owned mode-0640 archive was included in a
+verified backup. It contained /etc/hosts and /usr/local while excluding account
+databases, machine ID and SSH host keys. Host system configuration was untouched.
+
+Optional live cloud roundtrip: PASS
+In a random Dropbox test-only repository, tested destination write/read, encrypted
+backup, verification and restore of generated fixture settings. Restored contents
+matched. The owned cloud repository was purged successfully afterward.
+
+Defects and retests
+One product defect was observed: footer/status clipping at 80x24 with a long
+persisted error. Fixed in d482f7e and retested successfully. No remaining product
+failure was observed in the executed cases.
+
+Some initial harness attempts failed because they matched raw incremental ANSI
+output as complete lines, expected Nano's wide title at 50 columns, or assumed a
+deadline necessarily preceded snapshot commit. These were harness assumptions;
+they were corrected and the affected cases were rerun. A stdin-held external
+restic helper also required its stdin to close during cleanup. These attempts are
+retained in private evidence and are not presented as product failures.
+
+Evidence and cleanup
+Private host evidence directory: ~/.local/state/setupvault-e2e-test/
+Guest fixture/evidence directory: /home/vaulttest/setupvault-e2e/evidence/
+Evidence includes labeled JSON command results, per-phase result files, ANSI TUI
+transcripts, screen text and native-80x24-before-layout-fix.png,
+native-80x24-fixed-top.png and native-80x24-fixed-end.png. Test harness scripts are
+private beside the host evidence. Only this sanitized report is intended for Git.
+
+Test cloud data was removed; test timers were disabled/removed; no owned restic or
+SetupVault worker remained. The isolated VM was shut down after evidence capture.
+
+Limits
+No real power outage or VM power cut was tested; SIGKILL covered a stale-lock
+failure. Other Fedora versions, architectures, terminals, Google Drive and
+OneDrive were not tested. This run used generated fixtures and did not repeat
+the full personal-data restore or reinstall packages from their inventories.
+These results do not guarantee locks can never remain after abrupt failure; they
+show graceful cleanup and recovery once restic recognizes a stale lock.
