@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,7 +45,13 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if *showVersion {
-		fmt.Println("SetupVault", version)
+		v := version
+		if v == "dev" {
+			if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+				v = info.Main.Version
+			}
+		}
+		fmt.Println("SetupVault", v)
 		return nil
 	}
 	args = flags.Args()

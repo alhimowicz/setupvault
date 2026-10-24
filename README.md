@@ -2,10 +2,21 @@
 
 A Go terminal app for backing up a Fedora/GNOME setup to an encrypted, versioned repository. Built with Bubble Tea, restic and rclone. **Early development; keep your existing backup until you have checked a restore.**
 
+[Go package](https://pkg.go.dev/github.com/alhimowicz/setupvault/cmd/setupvault)
+
 ## Run
 
 ```sh
 sudo dnf install restic rclone libsecret dconf flatpak
+go install github.com/alhimowicz/setupvault/cmd/setupvault@latest
+setupvault
+```
+
+Go installs the executable into `GOBIN`, or `$(go env GOPATH)/bin` by default; add that directory to your `PATH`. Go installation provides the terminal app. Use the Fedora RPM for the optional protected system export helper and desktop app-menu entry.
+
+To build a checkout instead:
+
+```sh
 make build
 ./bin/setupvault
 ```
