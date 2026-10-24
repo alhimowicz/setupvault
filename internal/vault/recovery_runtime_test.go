@@ -100,3 +100,18 @@ func TestPackageStopControlIsExplicitAndBounded(t *testing.T) {
 		t.Fatal("system installer did not observe the stop request")
 	}
 }
+
+func TestFailedPreparationCannotResumeAsSuccessfulRecovery(t *testing.T) {
+	a := fixture(t)
+	id := strings.Repeat("b", 32)
+	if err := os.MkdirAll(filepath.Join(a.StateDir, "recovery", id), 0700); err != nil {
+		t.Fatal(err)
+	}
+	j := &RecoveryJob{Version: 1, ID: id, ProfileID: a.Profile.ID, TargetHome: a.Profile.Home, Status: "Failed", Phase: "Restoring and verifying private staging data"}
+	if err := a.saveRecovery(j); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ResumeRecovery(context.Background(), id, false); err == nil || !strings.Contains(err.Error(), "preparation") {
+		t.Fatal("incomplete staging was accepted for recovery", err)
+	}
+}

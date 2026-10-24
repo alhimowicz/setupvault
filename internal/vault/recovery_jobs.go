@@ -37,6 +37,9 @@ func (a *App) ApplyRecovery(ctx context.Context, id string, allowInteraction boo
 	if err != nil {
 		return nil, err
 	}
+	if !j.Prepared {
+		return j, errors.New("backup preparation did not finish; choose the snapshot and prepare a new plan")
+	}
 	if j.Status != "Ready" && j.Status != "Canceled" && j.Status != "Interrupted" && j.Status != "Partial" && j.Status != "Failed" {
 		return j, errors.New("recovery must be ready or stopped before it can start")
 	}
@@ -439,6 +442,9 @@ func (a *App) ResumeRecovery(ctx context.Context, id string, allowInteraction bo
 	j, err := a.RecoveryStatus(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !j.Prepared {
+		return j, errors.New("backup preparation did not finish; choose the snapshot and prepare a new plan")
 	}
 	if j.Active() {
 		return j, errors.New("recovery is still active")

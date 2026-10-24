@@ -84,6 +84,7 @@ type RecoveryJob struct {
 	NeedsLogout     bool              `json:"needs_logout,omitempty"`
 	Privileged      bool              `json:"privileged,omitempty"`
 	StagedBytes     uint64            `json:"staged_bytes"`
+	Prepared        bool              `json:"prepared,omitempty"`
 	checkpointTime  time.Time
 	checkpointCount int
 }
@@ -147,6 +148,9 @@ func (a *App) Recovery(id string) (*RecoveryJob, error) {
 	}
 	if err = a.readRecoveryCheckpoints(&j, dir); err != nil {
 		return nil, err
+	}
+	if j.Status == "Ready" || j.Unit != "" {
+		j.Prepared = true
 	}
 	return &j, nil
 }
@@ -335,6 +339,7 @@ func (a *App) PlanRecovery(ctx context.Context, snapshot string, groups []string
 		return nil, err
 	}
 	j.Status = "Ready"
+	j.Prepared = true
 	j.Phase = "Review changes before starting recovery"
 	if err = a.saveRecovery(j); err != nil {
 		return nil, err
