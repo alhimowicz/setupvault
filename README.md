@@ -24,12 +24,14 @@ make build
 Building requires Go 1.26 or newer. SetupVault runs as your desktop user. The installed RPM adds an optional, narrowly scoped administrator helper for system configuration.
 
 1. **Connections:** choose an existing connection with Enter, connect Dropbox with `d`, or choose a local folder with `l`. Choose a dedicated backup folder. The connection test uploads and reads a small temporary probe.
-2. **Contents:** Space selects groups; Enter expands the actual folders. Add other settings locations with `a`. Individual paths can be excluded. Review this before backing up.
+2. **Contents:** Space selects groups; Enter expands the actual folders. Add other settings locations with `a`. Select a `[custom]` path and press `d` or Delete to remove it from the backup selection; the original files stay on disk. Individual paths can be excluded. Review this before backing up.
 3. **Settings:** press `p` to set the recovery password; save it in Bitwarden. Press `x` to export an encrypted `setupvault-recovery.age` profile and keep that file somewhere you can access after a reinstall.
 4. Press `b` to back up. Overview shows the destination, previous backup, verification, next scheduled run and cloud quota when available. Activity shows results. An incomplete backup is reported as partial, never healthy.
 5. After checking a restore, set a schedule with `s` in Settings, for example `daily` or `*-*-* 19:00:00`. Use `off` to disable it. Keep the executable at its installed path after scheduling.
 
 Tab / Shift+Tab changes pages, arrows select, Esc cancels a task, and `q` quits. The app has no persistent web server.
+
+Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
 
 ## CLI flags for scripts and agents
 

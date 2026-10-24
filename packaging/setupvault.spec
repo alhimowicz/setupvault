@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           setupvault
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
@@ -73,6 +73,11 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.2.1-1
+- Animate asynchronous actions and wrap long notices to the terminal width
+- Restore editor keyboard modes and allow removing custom backup paths
+- Split terminal interface code by responsibility
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.2.0-1
 - Add command flags, structured JSON responses and unattended recovery
 - Detect background terminal launches before starting the interface

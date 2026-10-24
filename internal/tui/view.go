@@ -1,0 +1,209 @@
+package tui
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+)
+
+var pages = []string{"Overview", "Connections", "Contents", "Restore", "Settings", "Activity"}
+
+var heading = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+
+var muted = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+var warning = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+
+var healthy = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
+
+func stamp(t time.Time) string {
+	if t.IsZero() {
+		return "Never"
+	}
+	return t.Local().Format("02 Jan 15:04")
+}
+
+func size(n uint64) string {
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	v := float64(n)
+	i := 0
+	for v >= 1024 && i < len(units)-1 {
+		v /= 1024
+		i++
+	}
+	return fmt.Sprintf("%.1f %s", v, units[i])
+}
+
+func (m Model) View() tea.View {
+	var b strings.Builder
+	b.WriteString(heading.Render("SetupVault") + "  " + m.app.Profile.Name)
+	if m.busy || m.refreshing {
+		b.WriteString("  " + m.spinner.View())
+	}
+	b.WriteString("\n")
+	for i, p := range pages {
+		label := fmt.Sprintf(" %s ", p)
+		if i == m.page {
+			label = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("24")).Foreground(lipgloss.Color("255")).Render(label)
+		}
+		b.WriteString(label)
+	}
+	b.WriteString("\n\n")
+	if m.form != nil {
+		b.WriteString(heading.Render(m.form.title) + "\n\n")
+		for i, in := range m.form.inputs {
+			b.WriteString(m.form.labels[i] + "\n" + in.View() + "\n\n")
+		}
+		b.WriteString(muted.Render("Enter next/save · Tab switch field · Esc cancel"))
+	} else {
+		s := m.app.State()
+		switch m.page {
+		case 0:
+			status := warning.Render(s.Status)
+			if s.Status == "Healthy" {
+				status = healthy.Render(s.Status)
+			}
+			b.WriteString("Status          " + status + "\n")
+			repo := m.app.Profile.Repository
+			if repo == "" {
+				repo = "Not configured — open Connections"
+			}
+			b.WriteString("Destination     " + repo + "\nConnection      " + stamp(s.LastConnection) + "\nLast backup     " + stamp(s.LastBackup) + "\nRestore checked " + stamp(s.LastVerified) + "\nNext backup     " + m.next + "\n")
+			b.WriteString(fmt.Sprintf("Last snapshot   %s · %d files · %s\n", short(s.Snapshot), s.Files, size(s.Bytes)))
+			if m.quota != nil {
+				b.WriteString(fmt.Sprintf("Cloud storage   %s used / %s total · %s free\n", size(m.quota.Used), size(m.quota.Total), size(m.quota.Free)))
+			}
+			b.WriteString("\n" + heading.Render("Included") + "\n")
+			for _, g := range m.app.Groups() {
+				check := " "
+				if g.Selected {
+					check = "x"
+				}
+				b.WriteString("  [" + check + "] " + g.Name + "\n")
+			}
+			b.WriteString("\n[b] Back up now   [v] Verify backup   Tab: navigate")
+		case 1:
+			b.WriteString("[d] Connect Dropbox   [o] Connect OneDrive   [l] Local folder\n[t] Test current destination   Enter: use selected connection\n\n")
+			if len(m.remotes) == 0 {
+				if m.refreshing {
+					b.WriteString("Loading connections…\n")
+				} else {
+					b.WriteString("No rclone connections yet. Choose a provider above.\n")
+				}
+			}
+			for i, r := range m.remotes {
+				cursor := "  "
+				if i == min(m.cursor, len(m.remotes)-1) {
+					cursor = "> "
+				}
+				b.WriteString(cursor + r.Type + " · " + r.Name + "\n")
+			}
+			b.WriteString("\nCurrent destination: " + m.app.Profile.Repository + "\n\n" + muted.Render("Google Drive: use an existing rclone connection with your own OAuth client.\nCloud sign-in opens your browser; the connection test writes and reads a tiny probe."))
+		case 2:
+			b.WriteString("Space: toggle group/exclusion   Enter: expand tree\n[a] Add path   [d/Del] Remove custom path   [s] System configuration\n\n")
+			rows := m.contentRows()
+			cursor := min(m.cursor, max(0, len(rows)-1))
+			room := max(3, m.height-13)
+			start := max(0, cursor-room+1)
+			groups := m.app.Groups()
+			selected := map[string]bool{}
+			for _, g := range groups {
+				selected[g.ID] = g.Selected
+			}
+			for i := start; i < min(len(rows), start+room); i++ {
+				r := rows[i]
+				prefix := "  "
+				if i == cursor {
+					prefix = "> "
+				}
+				prefix += strings.Repeat("  ", r.depth)
+				label := r.label
+				if r.group {
+					mark := " "
+					if selected[r.id] {
+						mark = "x"
+					}
+					label = "[" + mark + "] " + label
+				} else {
+					label = r.path
+					if r.custom {
+						label += "  [custom]"
+					}
+					if r.excluded {
+						label += "  [excluded]"
+					}
+				}
+				if r.group || r.dir {
+					if m.expanded[r.id] || m.expanded[r.path] {
+						label = "▾ " + label
+					} else {
+						label = "▸ " + label
+					}
+				}
+				b.WriteString(prefix + label + "\n")
+			}
+			b.WriteString("\n" + muted.Render("App settings can live outside common config folders. Add explicit paths when needed.\nDocuments, browser profiles, caches and local mail are excluded by default."))
+		case 3:
+			b.WriteString("[r] Load snapshots   Enter: restore selected snapshot to a new folder\n\n")
+			if len(m.snapshots) == 0 {
+				b.WriteString("Load backup history to choose a dated snapshot.\n")
+			}
+			for i, s := range m.snapshots {
+				prefix := "  "
+				if i == min(m.cursor, len(m.snapshots)-1) {
+					prefix = "> "
+				}
+				b.WriteString(prefix + stamp(s.Time) + "  " + short(s.ID) + "  " + s.Hostname + "\n")
+			}
+			b.WriteString("\n" + muted.Render("Restores never overwrite your home or /. Review restored settings first.\nThe restored inventory contains RPM/Flatpak lists for reinstalling packaged apps.\nSystem configuration is archived separately for selective administrator restore."))
+		case 4:
+			calendar := m.app.Profile.Schedule
+			if calendar == "" {
+				calendar = "Off"
+			}
+			b.WriteString(fmt.Sprintf("[n] Name                 %s\n[p] Recovery password    Set/unlock in the desktop keyring\n[s] Schedule             %s\n[k] Keep snapshots       %d\n[x] Export encrypted recovery profile\n[i] Import recovery profile\n[e] Advanced profile     %s\n", m.app.Profile.Name, calendar, m.app.Profile.KeepLast, m.app.ProfilePath()))
+			b.WriteString("\n" + muted.Render("Save the recovery password in Bitwarden. Export/import uses that same password.\nImported profiles have scheduling disabled. Cloud sign-in may be needed again.\nScheduled backups need an unlocked desktop keyring and an active user session."))
+		case 5:
+			data, _ := os.ReadFile(filepath.Join(m.app.StateDir, "activity.log"))
+			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+			start := max(0, len(lines)-max(3, m.height-12))
+			b.WriteString(strings.Join(lines[start:], "\n"))
+		}
+	}
+	if m.busy {
+		b.WriteString("\n\n" + m.spinner.View() + " " + heading.Render(m.progress.Phase))
+		if m.progress.TotalBytes > 0 {
+			b.WriteString(fmt.Sprintf(" · %s / %s", size(m.progress.Bytes), size(m.progress.TotalBytes)))
+		}
+		b.WriteString("  Esc: cancel")
+	} else if m.refreshing {
+		b.WriteString("\n\n" + m.spinner.View() + " " + muted.Render("Refreshing connections, storage and schedule…"))
+	}
+	message := ansi.Wrap(m.message, max(1, m.width-4), "")
+	if m.failed {
+		message = warning.Render(message)
+	}
+	b.WriteString("\n\n" + message + "\n" + muted.Render("Tab/Shift+Tab navigate · ↑↓ select · q quit"))
+	if m.confirmQuit {
+		b.WriteString("\n" + warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
+	}
+	v := tea.NewView(lipgloss.NewStyle().Padding(1, 2).MaxWidth(max(1, m.width)).Render(b.String()))
+	v.AltScreen = true
+	return v
+}
+
+func short(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	if s == "" {
+		return "None"
+	}
+	return s
+}
