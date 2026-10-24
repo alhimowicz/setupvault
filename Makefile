@@ -1,4 +1,4 @@
-VERSION ?= 0.2.1
+VERSION ?= 0.2.2
 GO ?= go
 
 .PHONY: build test dist rpm clean

@@ -13,12 +13,18 @@ import (
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
+	if m.quitting {
+		return nil
+	}
 	if m.confirmQuit {
 		if key == "y" {
 			if m.cancel != nil {
 				m.cancel()
 			}
-			return tea.Quit
+			m.confirmQuit = false
+			m.quitting = true
+			m.message = "Canceling; waiting for the backup engine to stop before quitting"
+			return nil
 		}
 		m.confirmQuit = false
 		return nil

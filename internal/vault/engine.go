@@ -42,6 +42,25 @@ type commandError struct {
 func (e *commandError) Error() string { return e.Message }
 
 func (a *App) restic(ctx context.Context, args []string, progress func(Progress)) ([]byte, error) {
+	out, err := a.runRestic(ctx, args, progress)
+	var ce *commandError
+	if !errors.As(err, &ce) || ce.Code != 11 || ctx.Err() != nil {
+		return out, err
+	}
+	// Restic decides which locks are stale; never bypass or force-remove active locks.
+	if _, err = a.runRestic(ctx, []string{"unlock"}, nil); err != nil {
+		return nil, fmt.Errorf("repository is locked; stale-lock cleanup failed: %w", err)
+	}
+	out, err = a.runRestic(ctx, args, progress)
+	if errors.As(err, &ce) && ce.Code == 11 {
+		ce.Message = "Repository is busy. Wait for the other operation to finish, then retry.\n" + ce.Message
+	} else if err == nil {
+		a.Log("Repository operation succeeded after stale-lock cleanup")
+	}
+	return out, err
+}
+
+func (a *App) runRestic(ctx context.Context, args []string, progress func(Progress)) ([]byte, error) {
 	if a.Profile.Repository == "" {
 		return nil, errors.New("choose a destination in Connections first")
 	}
@@ -64,6 +83,10 @@ func (a *App) restic(ctx context.Context, args []string, progress func(Progress)
 	w.Close()
 	command := append([]string{"-r", a.Profile.Repository, "--password-file", "/proc/self/fd/3", "--json"}, args...)
 	cmd := exec.CommandContext(ctx, "restic", command...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Let restic remove its repository lock before falling back to a forced stop.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 30 * time.Second
 	cmd.ExtraFiles = []*os.File{r}
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "RESTIC_") && !strings.HasPrefix(e, "RCLONE_CONFIG=") {
@@ -118,7 +141,17 @@ func (a *App) restic(ctx context.Context, args []string, progress func(Progress)
 		if errors.As(err, &exit) {
 			code = exit.ExitCode()
 		}
-		message := sensitive.ReplaceAllString(strings.TrimSpace(strings.ReplaceAll(stderr.String(), password, "[REDACTED]")), "$1$2[REDACTED]")
+		message := strings.TrimSpace(stderr.String())
+		for _, line := range bytes.Split(stderr.Bytes(), []byte{'\n'}) {
+			var entry struct {
+				Type    string `json:"message_type"`
+				Message string `json:"message"`
+			}
+			if json.Unmarshal(line, &entry) == nil && entry.Type == "exit_error" && entry.Message != "" {
+				message = entry.Message
+			}
+		}
+		message = sensitive.ReplaceAllString(strings.ReplaceAll(message, password, "[REDACTED]"), "$1$2[REDACTED]")
 		if len(message) > 2000 {
 			message = message[len(message)-2000:]
 		}
@@ -143,19 +176,30 @@ func (a *App) initialize(ctx context.Context) error {
 	return err
 }
 
-func (a *App) Backup(ctx context.Context, progress func(Progress)) (result error) {
+func (a *App) lockOperation() (func(), error) {
 	if err := os.MkdirAll(a.StateDir, 0700); err != nil {
-		return err
+		return nil, err
 	}
 	lock, err := os.OpenFile(filepath.Join(a.StateDir, "backup.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
+		return nil, err
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		return nil, errors.New("another repository operation is already running for this profile; wait for it to finish")
+	}
+	return func() {
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		_ = lock.Close()
+	}, nil
+}
+
+func (a *App) Backup(ctx context.Context, progress func(Progress)) (result error) {
+	unlock, err := a.lockOperation()
+	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("another backup is already running")
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer unlock()
 	s := a.State()
 	s.LastAttempt = time.Now()
 	s.Status = "Running"
@@ -285,18 +329,33 @@ func (a *App) verify(ctx context.Context, s State) error {
 }
 
 func (a *App) Verify(ctx context.Context) error {
+	unlock, err := a.lockOperation()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	s := a.State()
 	if err := a.verify(ctx, s); err != nil {
 		s.Status = "Verification failed"
+		if errors.Is(err, context.Canceled) {
+			s.Status = "Verification canceled"
+		}
 		s.LastError = err.Error()
 		_ = a.saveState(s)
+		a.Log(s.Status + ": " + s.LastError)
 		return err
 	}
 	s.LastVerified = time.Now()
 	if !s.LastAttempt.After(s.LastBackup) {
 		s.Status = "Healthy"
 		s.LastError = ""
+	} else {
+		if s.Status == "Verification failed" || s.Status == "Verification canceled" {
+			s.LastError = "The saved snapshot passed verification, but a newer backup attempt did not complete. Run a new backup."
+		}
+		s.Status = "Verified; backup incomplete"
 	}
+	a.Log("Repository and sample restore verified: " + s.Snapshot)
 	return a.saveState(s)
 }
 
@@ -322,6 +381,11 @@ func (a *App) Restore(ctx context.Context, snapshot, target string) error {
 	if !filepath.IsAbs(target) || filepath.Clean(target) == "/" || filepath.Clean(target) == filepath.Clean(a.Profile.Home) {
 		return errors.New("choose a new absolute restore folder, not / or your home folder")
 	}
+	unlock, err := a.lockOperation()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("restore folder must not be a symbolic link")
 	}
@@ -333,7 +397,7 @@ func (a *App) Restore(ctx context.Context, snapshot, target string) error {
 	if err := os.MkdirAll(target, 0700); err != nil {
 		return err
 	}
-	_, err := a.restic(ctx, []string{"restore", snapshot, "--target", target}, nil)
+	_, err = a.restic(ctx, []string{"restore", snapshot, "--target", target}, nil)
 	if err == nil {
 		a.Log("Restored snapshot " + snapshot + " to " + target)
 	}

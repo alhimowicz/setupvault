@@ -219,7 +219,10 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 		if err != nil {
 			return finish(nil, err)
 		}
-		_, err = tea.NewProgram(tui.New(a), tea.WithInput(in), tea.WithOutput(out), tea.WithContext(ctx)).Run()
+		model, err := tea.NewProgram(tui.New(a), tea.WithInput(in), tea.WithOutput(out), tea.WithContext(ctx)).Run()
+		if m, ok := model.(tui.Model); ok {
+			m.Shutdown()
+		}
 		return finish(nil, err)
 	}
 	action := chosen[0]

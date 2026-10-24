@@ -76,6 +76,9 @@ func (m Model) View() tea.View {
 			}
 			b.WriteString("Destination     " + repo + "\nConnection      " + stamp(s.LastConnection) + "\nLast backup     " + stamp(s.LastBackup) + "\nRestore checked " + stamp(s.LastVerified) + "\nNext backup     " + m.next + "\n")
 			b.WriteString(fmt.Sprintf("Last snapshot   %s · %d files · %s\n", short(s.Snapshot), s.Files, size(s.Bytes)))
+			if s.LastError != "" {
+				b.WriteString(warning.Render(ansi.Wrap("Last issue: "+s.LastError, max(1, m.width-4), "")) + "\n")
+			}
 			if m.quota != nil {
 				b.WriteString(fmt.Sprintf("Cloud storage   %s used / %s total · %s free\n", size(m.quota.Used), size(m.quota.Total), size(m.quota.Free)))
 			}

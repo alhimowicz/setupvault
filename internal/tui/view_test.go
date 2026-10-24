@@ -1,10 +1,14 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
 
+	"github.com/alhimowicz/setupvault/internal/vault"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -38,6 +42,33 @@ func TestLongNoticesWrapWithoutDroppingText(t *testing.T) {
 			if stripSpace(view[start:end+len("NOTICEEND")]) != stripSpace(m.message) {
 				t.Fatal("wrapped notice lost text", view)
 			}
+		}
+	}
+}
+
+func TestSavedFailureReasonVisibleAfterRestart(t *testing.T) {
+	m := testModel(t)
+	m.width = 50
+	message := "Repository busy: " + strings.Repeat("long/path/", 12) + " OWNER-PID-1234"
+	data, err := json.Marshal(vault.State{Repository: m.app.Profile.Repository, Status: "Verification failed", LastError: message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(m.app.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(m.app.StateDir, "state.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	m = New(m.app)
+	m.width = 50
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Last issue:") || !strings.Contains(view, "OWNER-PID-1234") {
+		t.Fatal("saved failure reason hidden after restart", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > m.width {
+			t.Fatal("saved failure overflowed the terminal", line)
 		}
 	}
 }

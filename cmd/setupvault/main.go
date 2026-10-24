@@ -15,7 +15,7 @@ import (
 var version = "dev"
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	code := run(ctx, os.Args[1:])
 	cancel()
 	os.Exit(code)

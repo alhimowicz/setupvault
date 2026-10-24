@@ -1,0 +1,100 @@
+SetupVault Fedora VM end-to-end test plan
+
+Purpose
+Validate the installed Fedora RPM, CLI and interactive TUI against real restic
+repositories. Concentrate on cancellation, repository locks and verification
+status while covering the full backup/export/import/restore workflow.
+
+Environment and isolation
+1. Use an isolated Fedora 44 GNOME VM with a controlling terminal. Record Fedora,
+   GNOME, Go (if used), restic and SetupVault versions and the exact tested commit.
+2. Preserve the existing recovery VM and its report. Prefer an independent disk
+   overlay or a new VM. Do not alter the host's real profile or backup repository.
+3. Install the current RPM and its dependencies. Create dedicated test users or
+   config/state directories and generated settings fixtures. Use a fixture-only
+   password in a mode-0600 file; do not record real credentials in evidence.
+4. Use a local repository for deterministic destructive tests. A live cloud test
+   may use only a new random SetupVault-Tests directory, with that directory alone
+   removed afterward. Never remove active locks or bypass repository locking.
+5. Capture commands, exit codes, redacted JSON responses and TUI transcripts or
+   screenshots. Exercise the TUI through a real PTY, including an 80x24 terminal.
+
+Test cases and expected outcomes
+
+01 Installation and discovery
+Install the RPM; check --version, --help, --help --json, desktop launcher and
+runtime dependencies. Both entry points start successfully without Go installed.
+
+02 CLI configuration and validation
+Use --set-config, --include, --remove-include, --exclude, --remove-exclude,
+--contents and --status with --json and isolated config/state directories.
+Changes persist; invalid arguments return nonzero exit codes and one valid JSON
+response. Passwords do not appear in arguments, output, logs or profile JSON.
+
+03 CLI complete recovery
+Create known native and Flatpak config files, a custom path, GNOME preferences
+and exclusion fixtures. Run a real backup; list snapshots; verify; export the
+encrypted profile. Import into fresh config/state and a different home/user,
+reconnect the repository, and restore into a new empty directory. Compare file
+contents and hashes, inclusion/exclusion and permissions. Import leaves schedules
+and protected system access disabled. Wrong passwords and occupied restore
+targets are rejected without changing existing data.
+
+04 TUI normal workflow
+Navigate every page. Configure a local destination and recovery password; add,
+expand, toggle and remove a custom path. Removing it preserves the actual file.
+Start backup, verify and snapshot discovery; see loading animation until each
+operation completes. Export/import and restore to a fresh folder; compare fixture
+files. Never use the personal backup password or repository for these cases.
+
+05 TUI keyboard and layout
+Open the advanced profile editor and exit Nano with Ctrl+X. Return to the TUI
+without Unknown sequence. Trigger a long error and inspect at 80x24 and narrower
+width, then resize. Errors wrap and remain readable. A saved verification error
+is visible after restarting. Check navigation, password masking/paste and quit.
+
+06 Graceful CLI cancellation
+Start a real restic operation, wait until its repository lock exists, then send
+SIGINT to SetupVault. Expect the cancellation exit code, completed child cleanup
+and no leftover repository lock. Repeat with SIGTERM and a CLI timeout. A later
+verification succeeds without manual unlocking.
+
+07 Graceful TUI cancellation and shutdown
+Start an operation and wait for its lock. Cancel with Esc, then run verification.
+Repeat using q followed by y and Ctrl+C confirmation; the TUI waits for cleanup
+before exiting. Also send SIGTERM/close the terminal during a task. No worker
+remains and the next operation can acquire a lock. Record forced-stop limitations.
+
+08 Stale-lock recovery
+In the test repository only, deliberately SIGKILL a separate restic operation
+after its lock is present. Confirm its PID has exited and the lock remains.
+Run SetupVault verification or backup. It removes only locks restic considers
+stale, retries once and succeeds. Repeat through both CLI and TUI.
+
+09 Active-lock protection and concurrency
+Keep a real restic process alive with an active conflicting lock. Run verification
+from SetupVault. The active lock remains, the owner continues running, and the
+error explains that the repository is busy. After stopping the owner gracefully,
+retry succeeds. Run a second same-profile CLI/TUI operation while the first owns
+the local lock; it is rejected without corrupting the first operation's state.
+
+10 Verification status and reasons
+Cause a real verification failure, confirm the saved reason is visible, fix the
+fixture fault or stale lock, then verify successfully. Old Verification failed
+status and error disappear. If a newer backup was canceled or partial, the saved
+snapshot may verify but the UI must still report the newer backup as incomplete.
+Cancel a verification and check that cancellation is distinguished from failure.
+
+11 Scheduler and system export (if available)
+In the isolated VM, authorize system export, include it in a backup and inspect
+the staged archive. Test a schedule and disable it afterward. Do not modify host
+system configuration. Record environment limitations rather than reporting an
+unexecuted case as passed.
+
+Report and cleanup
+For each case, record PASS, FAIL or NOT RUN, with evidence paths and exact errors.
+Separate assertions checked by unit tests from behavior observed inside the VM.
+List defects, severity, reproduction steps and any repairs/retests. Record which
+test commit/RPM produced each result. Remove only fixture cloud data, disable
+test timers, stop owned processes and leave the VM powered off. Return an overall
+verdict and the checks that remain unverified.

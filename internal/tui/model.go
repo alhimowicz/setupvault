@@ -50,8 +50,10 @@ type Model struct {
 	expanded                    map[string]bool
 	message                     string
 	failed, busy, confirmQuit   bool
+	quitting                    bool
 	progress                    vault.Progress
 	cancel                      context.CancelFunc
+	taskDone                    chan struct{}
 	events                      chan event
 	remotes                     []vault.Remote
 	snapshots                   []vault.Snapshot
@@ -139,6 +141,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.cancel != nil {
 			m.cancel()
 			m.cancel = nil
+		}
+		if m.quitting {
+			return m, tea.Quit
 		}
 		if msg.err != nil {
 			m.message = msg.err.Error()

@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/alhimowicz/setupvault/internal/vault"
 )
 
@@ -57,6 +59,75 @@ func TestLoadingAnimationForTaskAndRefresh(t *testing.T) {
 	m = next.(Model)
 	if m.refreshing || cmd != nil {
 		t.Fatal("spinner kept ticking while idle")
+	}
+}
+
+func TestQuitAndShutdownWaitForTaskCleanup(t *testing.T) {
+	for _, quit := range []bool{false, true} {
+		m := testModel(t)
+		cleaning := make(chan struct{})
+		release := make(chan struct{})
+		t.Cleanup(func() {
+			select {
+			case <-release:
+			default:
+				close(release)
+			}
+			m.Shutdown()
+		})
+		m.start("Test task", func(ctx context.Context, _ *vault.App, progress func(vault.Progress)) (event, error) {
+			for range 32 {
+				progress(vault.Progress{Phase: "Working"})
+			}
+			<-ctx.Done()
+			close(cleaning)
+			<-release
+			return event{}, ctx.Err()
+		})
+		if quit {
+			m.handleKey(tea.KeyPressMsg{Code: 'q', Text: "q"})
+			cmd := m.handleKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
+			if cmd != nil || !m.quitting || !m.busy || m.confirmQuit {
+				t.Fatal("quit did not wait for task cleanup")
+			}
+			if cmd := m.handleKey(tea.KeyPressMsg{Code: 'q', Text: "q"}); cmd != nil {
+				t.Fatal("repeated quit bypassed cleanup")
+			}
+		}
+		stopped := make(chan struct{})
+		go func() { m.Shutdown(); close(stopped) }()
+		select {
+		case <-cleaning:
+		case <-time.After(time.Second):
+			t.Fatal("worker was not canceled")
+		}
+		select {
+		case <-stopped:
+			t.Fatal("shutdown returned before worker cleanup")
+		default:
+		}
+		close(release)
+		select {
+		case <-stopped:
+		case <-time.After(time.Second):
+			t.Fatal("shutdown blocked on a full progress queue")
+		}
+		if quit {
+			for {
+				e := waitEvent(m.events)().(event)
+				if !e.done {
+					continue
+				}
+				_, cmd := m.Update(e)
+				if cmd == nil {
+					t.Fatal("completion did not finish quitting")
+				}
+				if _, ok := cmd().(tea.QuitMsg); !ok {
+					t.Fatal("completion did not quit")
+				}
+				break
+			}
+		}
 	}
 }
 

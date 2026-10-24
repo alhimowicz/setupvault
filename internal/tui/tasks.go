@@ -31,7 +31,7 @@ func waitEvent(ch <-chan event) tea.Cmd {
 	return func() tea.Msg {
 		e, ok := <-ch
 		if !ok {
-			return event{done: true}
+			return event{done: true, err: context.Canceled}
 		}
 		return e
 	}
@@ -46,9 +46,13 @@ func (m *Model) start(label string, fn func(context.Context, *vault.App, func(va
 	m.events = make(chan event, 16)
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
+	m.taskDone = make(chan struct{})
+	done := m.taskDone
 	worker := *m.app
 	ch := m.events
 	go func() {
+		defer close(done)
+		defer close(ch)
 		e, err := fn(ctx, &worker, func(p vault.Progress) {
 			select {
 			case ch <- event{progress: p}:
@@ -57,13 +61,25 @@ func (m *Model) start(label string, fn func(context.Context, *vault.App, func(va
 		})
 		e.done = true
 		e.err = err
-		ch <- e
-		close(ch)
+		select {
+		case ch <- e:
+		case <-ctx.Done():
+		}
 	}()
 	if animate {
 		return tea.Batch(waitEvent(ch), m.spinner.Tick)
 	}
 	return waitEvent(ch)
+}
+
+// Shutdown waits for the worker to release repository locks when the terminal closes.
+func (m Model) Shutdown() {
+	if m.cancel != nil {
+		m.cancel()
+	}
+	if m.taskDone != nil {
+		<-m.taskDone
+	}
 }
 
 func (m *Model) connectionTest() tea.Cmd {

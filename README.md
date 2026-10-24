@@ -116,6 +116,10 @@ Setting a password for an existing repository first checks it can unlock that re
 
 A backup is healthy only after restic commits a snapshot, checks repository structure, and restores a random marker from that snapshot. This is a sample restore, not a full read of every stored data block. Retention keeps the latest N snapshots with this profile's tag, then prunes unreferenced data after a verified backup. Other profiles' snapshots are not forgotten.
 
+Cancellation interrupts restic and allows up to 30 seconds for cleanup before a forced stop. Quitting the TUI waits for its running task to finish cleanup. If a repository operation encounters a lock, SetupVault asks restic to remove stale locks and retries once; active locks are never forcibly removed. Backup, verification and restore for the same local profile are serialized. A power failure or forced process kill can still leave a lock; recovery is possible once restic considers it stale.
+
+Overview displays the saved failure reason even after restarting. A successful verification clears an old verification failure. If a newer backup attempt was incomplete, the status says `Verified; backup incomplete`: the stored snapshot passed, but a new backup is still needed.
+
 Scheduling uses your systemd user manager and an unlocked login keyring. This version requires an active desktop session and does not promise unattended backups while logged out. Failed scheduled jobs retry after an hour; persistent timers catch up when the user manager starts. Overview reports actual timer status.
 
 State is in `$XDG_STATE_HOME/setupvault` (default `~/.local/state/setupvault`); the editable profile is `$XDG_CONFIG_HOME/setupvault/profile.json` (default `~/.config/setupvault`). Passwords and state are not published to GitHub. Separate profiles need separate config **and** state directories.
