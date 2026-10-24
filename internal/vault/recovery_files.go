@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -141,6 +142,18 @@ func (a *App) planRecoveryFiles(ctx context.Context, j *RecoveryJob, stage strin
 			return err
 		}
 		f.After = f.SourceHash
+		if desktopRecoveryPath(rel) && info.Mode().IsRegular() && info.Size() <= 1<<20 {
+			data, e := src.ReadFile(sourceRel)
+			if e != nil {
+				return e
+			}
+			mapped := mapDesktopEntry(data, source.Home, j.TargetHome)
+			if !bytes.Equal(mapped, data) {
+				f.Rewrite = true
+				sum := sha256.Sum256(mapped)
+				f.After = fmt.Sprintf("%o:%x", info.Mode().Perm(), sum)
+			}
+		}
 		if group == "manual" && info.Mode().IsRegular() {
 			input, e := src.Open(sourceRel)
 			if e == nil {
@@ -229,7 +242,7 @@ func (a *App) planRecoveryFiles(ctx context.Context, j *RecoveryJob, stage strin
 	return nil
 }
 
-func copyRecoveryEntry(src *os.Root, source string, dst *os.Root, target string, link string) error {
+func copyRecoveryEntry(src *os.Root, source string, dst *os.Root, target string, link string, content []byte) error {
 	info, err := src.Lstat(source)
 	if err != nil {
 		return err
@@ -258,11 +271,15 @@ func copyRecoveryEntry(src *os.Root, source string, dst *os.Root, target string,
 			return err
 		}
 		defer input.Close()
+		var reader io.Reader = input
+		if content != nil {
+			reader = bytes.NewReader(content)
+		}
 		output, err := dst.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return err
 		}
-		_, copyErr := io.Copy(output, input)
+		_, copyErr := io.Copy(output, reader)
 		if copyErr == nil {
 			copyErr = output.Chmod(info.Mode().Perm())
 		}
@@ -347,7 +364,7 @@ func (a *App) applyRecoveryFiles(ctx context.Context, j *RecoveryJob, canceled f
 			continue
 		}
 		if !f.Saved && current != "missing" {
-			if err = copyRecoveryEntry(dst, f.Path, old, f.Path, ""); err != nil {
+			if err = copyRecoveryEntry(dst, f.Path, old, f.Path, "", nil); err != nil {
 				return err
 			}
 		}
@@ -357,7 +374,15 @@ func (a *App) applyRecoveryFiles(ctx context.Context, j *RecoveryJob, canceled f
 		if err = a.checkpointRecovery(j, f, nil); err != nil {
 			return err
 		}
-		if err = copyRecoveryEntry(src, f.Source, dst, f.Path, f.Link); err != nil {
+		var content []byte
+		if f.Rewrite {
+			data, e := src.ReadFile(f.Source)
+			if e != nil {
+				return e
+			}
+			content = mapDesktopEntry(data, j.SourceHome, j.TargetHome)
+		}
+		if err = copyRecoveryEntry(src, f.Source, dst, f.Path, f.Link, content); err != nil {
 			f.Status = "Blocked"
 			f.Retryable = true
 			f.Reason = err.Error()
@@ -370,6 +395,9 @@ func (a *App) applyRecoveryFiles(ctx context.Context, j *RecoveryJob, canceled f
 			continue
 		}
 		f.Status = "Restored"
+		if f.Group == "gnome" {
+			j.NeedsLogout = true
+		}
 		f.Retryable = false
 		f.Reason = ""
 		if err = a.checkpointRecovery(j, f, nil); err != nil {
@@ -467,7 +495,7 @@ func (a *App) UndoRecoverySettings(ctx context.Context, id string) (*RecoveryJob
 			if checkErr != nil || original != f.Before {
 				return j, errors.New("settings rollback copy changed; current file was preserved")
 			}
-			err = copyRecoveryEntry(old, f.Path, dst, f.Path, "")
+			err = copyRecoveryEntry(old, f.Path, dst, f.Path, "", nil)
 		}
 		if err != nil {
 			return j, err
@@ -495,4 +523,21 @@ func (a *App) UndoRecoverySettings(ctx context.Context, id string) (*RecoveryJob
 		j.Phase += "; newer file changes were preserved"
 	}
 	return j, a.saveRecovery(j)
+}
+
+func desktopRecoveryPath(rel string) bool {
+	return strings.HasSuffix(rel, ".desktop") && (strings.HasPrefix(rel, ".local/share/applications/") || strings.HasPrefix(rel, ".config/autostart/"))
+}
+func mapDesktopEntry(data []byte, source, target string) []byte {
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if key == "Exec" || key == "TryExec" || key == "Path" || key == "Icon" {
+			lines[i] = key + "=" + strings.ReplaceAll(value, source+"/", target+"/")
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
 }

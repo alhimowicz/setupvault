@@ -256,9 +256,20 @@ func (a *App) runRecoveryJob(ctx context.Context, id string) (result error) {
 		return err
 	}
 	defer func() {
+		a.reconcileRecoveryPackages(j)
 		if result != nil {
 			j.Status = "Failed"
 			j.Error = result.Error()
+			for _, p := range j.Packages {
+				if p.Selected && p.Status == "Installed" {
+					j.Status = "Partial"
+				}
+			}
+			for _, f := range j.Files {
+				if f.Saved && f.Status == "Restored" {
+					j.Status = "Partial"
+				}
+			}
 			if errors.Is(result, context.Canceled) {
 				j.Status = "Canceled"
 				j.Phase = "Stopped at a safe boundary; completed work is retained"
@@ -387,6 +398,29 @@ func (a *App) runRecoveryJob(ctx context.Context, id string) (result error) {
 		return context.Canceled
 	}
 	return nil
+}
+
+func (a *App) reconcileRecoveryPackages(j *RecoveryJob) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for i := range j.Packages {
+		p := &j.Packages[i]
+		if !p.Selected || !j.Selected("apps") {
+			continue
+		}
+		var err error
+		if p.Kind == "rpm" {
+			_, err = commandOutput(ctx, "rpm", "-q", "--", p.Name)
+		} else {
+			args := append([]string{"info"}, flatpakScope(p.Scope)...)
+			args = append(args, p.Name+"//"+p.Branch)
+			_, err = commandOutput(ctx, "flatpak", args...)
+		}
+		if err == nil {
+			p.Status = "Installed"
+			p.Reason = ""
+		}
+	}
 }
 
 func (a *App) ResumeRecovery(ctx context.Context, id string, allowInteraction bool) (*RecoveryJob, error) {

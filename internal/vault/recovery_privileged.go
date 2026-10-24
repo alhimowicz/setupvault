@@ -189,6 +189,16 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 	if err = save(); err != nil {
 		return err
 	}
+	for _, p := range r.Flatpaks {
+		if err = checkFlatpakRemote(ctx, p); err != nil {
+			return err
+		}
+		args := append([]string{"--", "flatpak", "remote-info", "--show-ref"}, flatpakScope(p.Scope)...)
+		args = append(args, "--", p.Origin, p.Name+"//"+p.Branch)
+		if _, err = commandOutput(ctx, "dbus-run-session", args...); err != nil {
+			return err
+		}
+	}
 	if len(r.RPMs) > 0 {
 		txdir := filepath.Join(dir, "transaction-"+randomID())
 		actual, err := prepareDNF(ctx, r.RPMs, txdir)
@@ -207,7 +217,7 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 			return err
 		}
 		// A package commit finishes before normal cancellation is acted on.
-		if _, err = commandOutput(context.Background(), "/usr/bin/dnf", "--assumeyes", "replay", txdir); err != nil {
+		if _, err = commandOutput(context.Background(), "/usr/bin/dnf", "--assumeyes", "--setopt=install_weak_deps=False", "--setopt=obsoletes=0", "replay", txdir); err != nil {
 			return err
 		}
 	}

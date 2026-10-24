@@ -290,7 +290,15 @@ func (a *App) planRecoveryPackages(ctx context.Context, j *RecoveryJob, inventor
 				parts := strings.Split(strings.TrimSpace(string(ref)), "/")
 				if err != nil || len(parts) != 4 {
 					p.Status = "Blocked"
-					p.Reason = "App or branch is unavailable in the configured remote"
+					p.Reason = "App metadata could not be resolved"
+					if err != nil {
+						p.Reason = err.Error()
+					}
+					if p.Scope != "user" {
+						p.Status = "Needs authorization"
+						p.Arch = hostArch()
+						p.Reason = "System source metadata will be checked by the authorized installer: " + p.Reason
+					}
 				} else {
 					p.Arch = parts[2]
 				}
@@ -317,7 +325,9 @@ func (a *App) resolveRecoveryDNF(ctx context.Context, j *RecoveryJob, dir string
 			names = append(names, p.Name)
 		}
 	}
-	transaction, err := prepareDNF(ctx, names, filepath.Join(dir, "dnf-"+randomID()))
+	store := filepath.Join(dir, "dnf-"+randomID())
+	defer os.RemoveAll(store)
+	transaction, err := prepareDNF(ctx, names, store)
 	if err != nil {
 		j.Notices = append(j.Notices, err.Error())
 		for i := range j.Packages {

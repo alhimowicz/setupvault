@@ -87,6 +87,9 @@ func TestSmallTerminalKeepsHelpVisibleAndCanScrollLongError(t *testing.T) {
 		if !strings.Contains(view, "q quit") || !strings.Contains(view, "PgUp/PgDn") {
 			t.Fatal("footer hidden in a small terminal", view)
 		}
+		if !strings.Contains(view, "SetupVault") || !strings.Contains(view, "Overview") {
+			t.Fatal("header scrolled out of view", view)
+		}
 		if len(strings.Split(view, "\n")) > m.height {
 			t.Fatal("view overflowed terminal height")
 		}

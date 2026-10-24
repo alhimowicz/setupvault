@@ -30,6 +30,7 @@ func recoveryFixture(t *testing.T) (*App, *RecoveryJob, string) {
 		t.Fatal(err)
 	}
 	put(t, filepath.Join(source.Profile.Home, ".config/rclone/rclone.conf"), "old connection")
+	put(t, filepath.Join(source.Profile.Home, ".local/share/applications/fixture.desktop"), "[Desktop Entry]\nName=Fixture\nExec="+source.Profile.Home+"/.local/bin/tool\n")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	if err := source.Backup(ctx, nil); err != nil {
@@ -100,6 +101,9 @@ func TestGuidedRecoveryPlansAppliesAndUndoesSettings(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(target, ".config/rclone/rclone.conf")); string(data) != "new connection" {
 		t.Fatal("current cloud credentials were overwritten")
+	}
+	if data, _ := os.ReadFile(filepath.Join(target, ".local/share/applications/fixture.desktop")); !strings.Contains(string(data), "Exec="+target+"/.local/bin/tool") || strings.Contains(string(data), job.SourceHome) {
+		t.Fatal("desktop launcher retained the old home", string(data))
 	}
 	put(t, filepath.Join(target, ".zprofile"), "edited after recovery")
 	undone, err := app.UndoRecoverySettings(context.Background(), job.ID)

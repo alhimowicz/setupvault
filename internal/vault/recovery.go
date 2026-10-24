@@ -38,6 +38,7 @@ type RecoveryFile struct {
 	Before     string `json:"before"`
 	After      string `json:"after"`
 	SourceHash string `json:"source_hash"`
+	Rewrite    bool   `json:"rewrite,omitempty"`
 	Status     string `json:"status"`
 	Reason     string `json:"reason,omitempty"`
 	Saved      bool   `json:"saved,omitempty"`

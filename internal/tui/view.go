@@ -212,22 +212,25 @@ func (m Model) content() string {
 	return b.String()
 }
 
-func (m Model) layout() ([]string, string, int) {
+func (m Model) layout() ([]string, string, string, int) {
 	help := muted.Render(ansi.Wrap("PgUp/PgDn scroll · Tab/Shift+Tab pages · ↑↓ select · q quit", max(1, m.width-4), ""))
-	room := max(1, m.height-2-lipgloss.Height(help))
-	return strings.Split(m.content(), "\n"), help, room
+	lines := strings.Split(m.content(), "\n")
+	count := min(3, len(lines))
+	header := strings.Join(lines[:count], "\n")
+	room := max(1, m.height-2-lipgloss.Height(help)-count)
+	return lines[count:], header, help, room
 }
 
 func (m Model) maxScroll() int {
-	lines, _, room := m.layout()
+	lines, _, _, room := m.layout()
 	return max(0, len(lines)-room)
 }
 
 func (m Model) View() tea.View {
-	lines, help, room := m.layout()
+	lines, header, help, room := m.layout()
 	start := max(0, min(m.scroll, len(lines)-room))
 	end := min(len(lines), start+room)
-	content := strings.Join(lines[start:end], "\n")
+	content := header + "\n" + strings.Join(lines[start:end], "\n")
 	content += strings.Repeat("\n", max(1, room-(end-start)+1)) + help
 	v := tea.NewView(lipgloss.NewStyle().Padding(1, 2).MaxWidth(max(1, m.width)).MaxHeight(max(1, m.height)).Render(content))
 	v.AltScreen = true
