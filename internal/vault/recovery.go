@@ -14,18 +14,20 @@ import (
 )
 
 type RecoveryPackage struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Name     string `json:"name"`
-	Scope    string `json:"scope,omitempty"`
-	Origin   string `json:"origin,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Key      string `json:"key,omitempty"`
-	Branch   string `json:"branch,omitempty"`
-	Arch     string `json:"arch,omitempty"`
-	Selected bool   `json:"selected"`
-	Status   string `json:"status"`
-	Reason   string `json:"reason,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Scope     string `json:"scope,omitempty"`
+	Origin    string `json:"origin,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Key       string `json:"key,omitempty"`
+	KeyData   []byte `json:"key_data,omitempty"`
+	AddRemote bool   `json:"add_remote,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	Arch      string `json:"arch,omitempty"`
+	Selected  bool   `json:"selected"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type RecoveryFile struct {
@@ -72,6 +74,7 @@ type RecoveryJob struct {
 	Groups          []string          `json:"groups"`
 	SkipApps        []string          `json:"skip_apps,omitempty"`
 	SkipFiles       []string          `json:"skip_files,omitempty"`
+	ApprovedSources []string          `json:"approved_sources,omitempty"`
 	Packages        []RecoveryPackage `json:"packages"`
 	Files           []RecoveryFile    `json:"files"`
 	Keys            []RecoveryKey     `json:"keys,omitempty"`

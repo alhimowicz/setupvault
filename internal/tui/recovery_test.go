@@ -43,3 +43,17 @@ func TestRecoveryReviewAndDependencyNoticeFitTerminal(t *testing.T) {
 		t.Fatal("cloud dependency is not actionable", view)
 	}
 }
+
+func TestRecoveryReconnectPrefersActiveOverNewerReadyPlan(t *testing.T) {
+	m := testModel(t)
+	active := vault.RecoveryJob{ID: "active", Status: "Running"}
+	ready := vault.RecoveryJob{ID: "newer-ready", Status: "Ready"}
+	for _, current := range []*vault.RecoveryJob{nil, &ready} {
+		m.recovery = current
+		next, _ := m.Update(recoveryStatusMsg{profile: m.app.Profile.ID, jobs: []vault.RecoveryJob{active, ready}})
+		m = next.(Model)
+		if m.recovery == nil || m.recovery.ID != active.ID {
+			t.Fatal("active recovery was hidden by a newer review plan")
+		}
+	}
+}

@@ -2,7 +2,7 @@
 
 Name:           setupvault
 Version:        0.3.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
 URL:            https://github.com/alhimowicz/setupvault
@@ -24,6 +24,7 @@ Requires:       tar
 Requires:       dbus-daemon
 Requires:       procps-ng
 Requires:       glib2
+Requires:       gnupg2
 
 %description
 SetupVault is a Bubble Tea terminal interface for encrypted, versioned backups

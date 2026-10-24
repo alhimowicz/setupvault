@@ -44,6 +44,9 @@ func (a *App) ApplyRecovery(ctx context.Context, id string, allowInteraction boo
 		if j.Selected("apps") && p.Selected && p.Status == "Blocked" {
 			return j, fmt.Errorf("%s: %s; resolve it or deselect the app", p.Name, p.Reason)
 		}
+		if j.Selected("apps") && p.Selected && p.Status == "Needs source approval" {
+			return j, fmt.Errorf("approve source %s:%s in the review or deselect %s", p.Scope, p.Origin, p.Name)
+		}
 	}
 	for _, f := range j.Files {
 		if j.Selected(f.Group) && f.Status == "Blocked" {

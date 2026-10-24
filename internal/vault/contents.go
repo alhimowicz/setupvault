@@ -200,6 +200,9 @@ func (a *App) Collect(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot record %s: %w", name, err)
 		}
+		if name == "flatpak-remotes.txt" {
+			out = publicRemoteListing(out)
+		}
 		if err = writePrivate(filepath.Join(a.InventoryDir(), name), out); err != nil {
 			return "", err
 		}

@@ -11,7 +11,7 @@ import (
 )
 
 func desktopKey(path string) bool {
-	for _, prefix := range []string{"/org/gnome/desktop/interface/", "/org/gnome/desktop/background/", "/org/gnome/desktop/screensaver/", "/org/gnome/desktop/wm/preferences/", "/org/gnome/desktop/wm/keybindings/", "/org/gnome/settings-daemon/plugins/media-keys/", "/org/gnome/terminal/legacy/", "/org/gnome/shell/extensions/"} {
+	for _, prefix := range []string{"/org/gnome/desktop/interface/", "/org/gnome/desktop/background/", "/org/gnome/desktop/screensaver/", "/org/gnome/desktop/wm/preferences/", "/org/gnome/desktop/wm/keybindings/", "/org/gnome/settings-daemon/plugins/media-keys/", "/org/gnome/terminal/legacy/", "/org/gnome/Ptyxis/", "/org/gnome/Console/", "/org/gnome/shell/extensions/"} {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
@@ -20,6 +20,18 @@ func desktopKey(path string) bool {
 }
 
 func recoverySchema(section, name string) string {
+	if section == "/org/gnome/Ptyxis/" {
+		return "org.gnome.Ptyxis"
+	}
+	if section == "/org/gnome/Ptyxis/Shortcuts/" {
+		return "org.gnome.Ptyxis.Shortcuts"
+	}
+	if strings.HasPrefix(section, "/org/gnome/Ptyxis/Profiles/") {
+		return "org.gnome.Ptyxis.Profile:" + section
+	}
+	if section == "/org/gnome/Console/" {
+		return "org.gnome.Console"
+	}
 	if strings.HasPrefix(section, "/org/gnome/desktop/") || section == "/org/gnome/shell/" || section == "/org/gnome/settings-daemon/plugins/media-keys/" {
 		return strings.ReplaceAll(strings.Trim(section, "/"), "/", ".")
 	}
@@ -39,7 +51,7 @@ func planRecoveryKeys(ctx context.Context, j *RecoveryJob, inventory string) ([]
 	if !j.Selected("gnome") {
 		return nil, nil
 	}
-	data, err := os.ReadFile(filepath.Join(inventory, "gnome-settings.dconf"))
+	data, err := readRecoveryInventory(inventory, "gnome-settings.dconf", 8<<20)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}

@@ -71,6 +71,7 @@ type Model struct {
 	recovery                    *vault.RecoveryJob
 	recoveryMode                string
 	recoveryBrowse              bool
+	recoveryJobs                []vault.RecoveryJob
 	connectorError              string
 }
 
@@ -102,11 +103,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		wasActive := m.recovery != nil && m.recovery.Active()
+		m.recoveryJobs = msg.jobs
 		if len(msg.jobs) > 0 {
 			chosen := &msg.jobs[len(msg.jobs)-1]
+			active := false
+			for i := range msg.jobs {
+				if msg.jobs[i].Active() {
+					chosen = &msg.jobs[i]
+					active = true
+				}
+			}
 			if m.recovery != nil {
 				for i := range msg.jobs {
-					if msg.jobs[i].ID == m.recovery.ID {
+					if msg.jobs[i].ID == m.recovery.ID && (!active || msg.jobs[i].Active()) {
 						chosen = &msg.jobs[i]
 						break
 					}

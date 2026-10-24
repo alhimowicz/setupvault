@@ -40,6 +40,7 @@ func (v *list) String() string     { return strings.Join(*v, ",") }
 func (v *list) Set(s string) error { *v = append(*v, s); return nil }
 
 type options struct {
+	approveSources                                                                 list
 	job                                                                            string
 	wait                                                                           bool
 	skipApps, skipFiles                                                            list
@@ -86,6 +87,7 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 	f.BoolVar(&o.wait, "wait", false, "Wait for asynchronous recovery; a waiting timeout leaves the job running")
 	f.Var(&o.skipApps, "skip-app", "With --plan-recovery: deselect an app ID or name; repeatable")
 	f.Var(&o.skipFiles, "skip-file", "With --plan-recovery: deselect a relative home path; repeatable")
+	f.Var(&o.approveSources, "approve-source", "With --plan-recovery: approve adding a recorded scope:remote; repeatable")
 	f.StringVar(&o.target, "target", "", "Empty absolute restore folder")
 	f.StringVar(&o.passwordFile, "password-file", "", "Password from private regular file; '-' reads stdin")
 	f.BoolVar(&o.passwordStdin, "password-stdin", false, "Read password from stdin through EOF")
@@ -321,7 +323,7 @@ func validateFlags(action string, seen map[string]bool, o *options) error {
 	}
 	switch action {
 	case "plan-recovery":
-		add("snapshot", "job", "select", "skip-app", "skip-file", "password-file", "password-stdin", "progress")
+		add("snapshot", "job", "select", "skip-app", "skip-file", "approve-source", "password-file", "password-stdin", "progress")
 		if o.job == "" && o.snapshot == "" {
 			return invalid("--plan-recovery requires --snapshot or --job")
 		}

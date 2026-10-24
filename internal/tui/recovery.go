@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -28,7 +29,7 @@ func (m Model) fetchRecovery() tea.Cmd {
 	a := *m.app
 	return func() tea.Msg {
 		jobs, _ := a.Recoveries()
-		sort.Slice(jobs, func(i, j int) bool { return jobs[i].Created.Before(jobs[j].Created) })
+		sort.Slice(jobs, func(i, j int) bool { return jobs[i].Updated.Before(jobs[j].Updated) })
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
 		for i := range jobs {
@@ -61,8 +62,24 @@ func (m Model) recoveryView() string {
 		return b.String()
 	}
 	switch m.recoveryMode {
+	case "sources":
+		b.WriteString("\nSpace: approve/deselect source   [g] Categories\n")
+		sources := recoverySources(j)
+		for i, p := range sources {
+			prefix := "  "
+			if i == min(m.cursor, len(sources)-1) {
+				prefix = "> "
+			}
+			mark := " "
+			for _, id := range j.ApprovedSources {
+				if id == p.SourceID() {
+					mark = "x"
+				}
+			}
+			b.WriteString(ansi.Wrap(prefix+"["+mark+"] "+p.Scope+":"+p.Origin+"\n    "+p.URL+"\n    Signing identity: "+p.Key, max(1, m.width-4), "") + "\n")
+		}
 	case "apps":
-		b.WriteString("\nSpace: select/deselect installation   [g] Categories\n")
+		b.WriteString("\nSpace: select/deselect installation   [s] Sources   [g] Categories\n")
 		cursor := min(m.cursor, max(0, len(j.Packages)-1))
 		start := max(0, cursor-max(3, m.height-14)+1)
 		for i := start; i < min(len(j.Packages), start+max(3, m.height-14)); i++ {
@@ -92,6 +109,18 @@ func (m Model) recoveryView() string {
 	case "details":
 		dir := filepath.Join(m.app.StateDir, "recovery", j.ID)
 		b.WriteString("\nVerified staging: " + filepath.Join(dir, "stage") + "\nSettings rollback: " + filepath.Join(dir, "rollback") + "\nReport: " + filepath.Join(dir, "job.json") + "\n")
+		var transaction struct {
+			RPMs []struct {
+				NEVRA, Action string
+				Repo          string `json:"repo_id"`
+			} `json:"rpms"`
+		}
+		if json.Unmarshal(j.DNF, &transaction) == nil && len(transaction.RPMs) > 0 {
+			b.WriteString("\nReviewed RPM transaction (including dependencies):\n")
+			for _, p := range transaction.RPMs {
+				b.WriteString(ansi.Wrap(p.Action+" "+p.NEVRA+" ["+p.Repo+"]", max(1, m.width-4), "") + "\n")
+			}
+		}
 		for _, notice := range j.Notices {
 			b.WriteString(ansi.Wrap("• "+notice, max(1, m.width-4), "") + "\n")
 		}
@@ -119,7 +148,7 @@ func (m Model) recoveryView() string {
 				present++
 			} else if p.Selected && j.Selected("apps") {
 				installs++
-				if p.Status == "Blocked" {
+				if p.Status == "Blocked" || p.Status == "Needs source approval" {
 					blocked++
 				}
 			}
@@ -190,6 +219,9 @@ func (m *Model) recoveryKey(key string) tea.Cmd {
 	case "p":
 		m.recoveryMode = "apps"
 		m.cursor = 0
+	case "s":
+		m.recoveryMode = "sources"
+		m.cursor = 0
 	case "f":
 		m.recoveryMode = "files"
 		m.cursor = 0
@@ -232,9 +264,17 @@ func (m *Model) recoveryKey(key string) tea.Cmd {
 			return nil
 		}
 		groups := append([]string{}, j.Groups...)
+		approved := append([]string{}, j.ApprovedSources...)
 		skipApps := append([]string{}, j.SkipApps...)
 		skipFiles := append([]string{}, j.SkipFiles...)
 		switch m.recoveryMode {
+		case "sources":
+			sources := recoverySources(j)
+			if len(sources) == 0 {
+				return nil
+			}
+			p := sources[min(m.cursor, len(sources)-1)]
+			approved = toggleRecoveryList(approved, p.SourceID())
 		case "apps":
 			if len(j.Packages) == 0 {
 				return nil
@@ -255,11 +295,24 @@ func (m *Model) recoveryKey(key string) tea.Cmd {
 			groups = toggleRecoveryList(groups, recoveryGroups[min(m.cursor, len(recoveryGroups)-1)])
 		}
 		return m.start("Updating recovery selection", func(ctx context.Context, a *vault.App, _ func(vault.Progress)) (event, error) {
-			job, err := a.SelectRecovery(ctx, j.ID, groups, skipApps, skipFiles)
+			job, err := a.SelectRecovery(ctx, j.ID, groups, skipApps, skipFiles, approved)
 			return event{text: "Recovery plan updated", recovery: job, recoveryKeepView: true}, err
 		})
 	}
 	return nil
+}
+
+func recoverySources(j *vault.RecoveryJob) []vault.RecoveryPackage {
+	var result []vault.RecoveryPackage
+	seen := map[string]bool{}
+	for _, p := range j.Packages {
+		key := p.Scope + ":" + p.Origin
+		if p.AddRemote && !seen[key] {
+			seen[key] = true
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func (m *Model) openRecoveryImport() tea.Cmd {

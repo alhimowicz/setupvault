@@ -15,13 +15,17 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 type RecoveryRemote struct {
-	Name  string `json:"name"`
-	URL   string `json:"url"`
-	Scope string `json:"scope"`
-	Key   string `json:"key,omitempty"`
+	Name         string `json:"name"`
+	URL          string `json:"url"`
+	Scope        string `json:"scope"`
+	Key          string `json:"key,omitempty"`
+	KeyData      []byte `json:"key_data,omitempty"`
+	RawKey       string `json:"-"`
+	RequiresAuth bool   `json:"requires_auth,omitempty"`
 }
 type RecoveryInventory struct {
 	Version      int                 `json:"version"`
@@ -77,10 +81,15 @@ func hostArch() string {
 func commandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.WaitDelay = 2 * time.Second
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		err = nil
+	}
+	if err != nil {
 		message := sensitive.ReplaceAllString(strings.TrimSpace(stderr.String()), "$1$2[REDACTED]")
 		if len(message) > 1500 {
 			message = message[len(message)-1500:]
@@ -103,8 +112,13 @@ func flatpakScope(scope string) []string {
 	return []string{"--installation=" + scope}
 }
 
-func recoveryRemotes(ctx context.Context) []RecoveryRemote {
+func recoveryRemotes(ctx context.Context, extra ...string) []RecoveryRemote {
 	scopes := []string{"user", "system"}
+	for _, scope := range extra {
+		if scope != "user" && scope != "system" && scope != "default" && validPackage(scope) {
+			scopes = append(scopes, scope)
+		}
+	}
 	if data, err := commandOutput(ctx, "flatpak", "list", "--app", "--columns=installation"); err == nil {
 		for _, s := range strings.Fields(string(data)) {
 			if s != "user" && s != "system" && s != "default" && validPackage(s) {
@@ -126,14 +140,25 @@ func recoveryRemotes(ctx context.Context) []RecoveryRemote {
 				continue
 			}
 			r := RecoveryRemote{Name: fields[0], URL: fields[1], Scope: scope}
+			r.URL, r.RequiresAuth = publicSourceURL(r.URL)
 			base := "/var/lib/flatpak/repo"
 			if r.Scope == "user" {
 				home, _ := os.UserHomeDir()
 				base = filepath.Join(home, ".local/share/flatpak/repo")
+				if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+					base = filepath.Join(dataHome, "flatpak/repo")
+				}
 			}
 			if data, err := os.ReadFile(filepath.Join(base, r.Name+".trustedkeys.gpg")); err == nil {
 				sum := sha256.Sum256(data)
-				r.Key = hex.EncodeToString(sum[:])
+				r.RawKey = hex.EncodeToString(sum[:])
+				r.Key = r.RawKey
+				if len(data) <= 1<<20 {
+					r.KeyData = data
+					if identity, e := publicKeyIdentity(ctx, data); e == nil {
+						r.Key = identity
+					}
+				}
 			}
 			result = append(result, r)
 		}
@@ -159,6 +184,30 @@ func canonicalDNF(raw []byte) ([]byte, error) {
 	}
 	sort.Slice(t.RPMs, func(i, j int) bool { return t.RPMs[i].NEVRA+t.RPMs[i].Action < t.RPMs[j].NEVRA+t.RPMs[j].Action })
 	return json.Marshal(t)
+}
+
+func reviewedDNF(actual, expected []byte) bool {
+	var reviewed, next dnfTransaction
+	if json.Unmarshal(expected, &reviewed) != nil {
+		return false
+	}
+	if len(actual) == 0 {
+		return true // All reviewed packages may already be installed on resume.
+	}
+	if json.Unmarshal(actual, &next) != nil || next.Version != reviewed.Version {
+		return false
+	}
+	approved := map[dnfRPM]int{}
+	for _, p := range reviewed.RPMs {
+		approved[p]++
+	}
+	for _, p := range next.RPMs {
+		if approved[p] == 0 {
+			return false
+		}
+		approved[p]--
+	}
+	return true
 }
 
 func prepareDNF(ctx context.Context, names []string, dir string) (json.RawMessage, error) {
@@ -193,9 +242,15 @@ func (a *App) planRecoveryPackages(ctx context.Context, j *RecoveryJob, inventor
 		return nil
 	}
 	var enhanced RecoveryInventory
-	_ = readLimitedJSON(filepath.Join(inventory, "recovery-inventory.json"), &enhanced, 4<<20)
+	if data, e := readRecoveryInventory(inventory, "recovery-inventory.json", 4<<20); e == nil {
+		if json.Unmarshal(data, &enhanced) != nil {
+			return errors.New("invalid recovery inventory")
+		}
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return e
+	}
 	remotes := recoveryRemotes(ctx)
-	data, err := os.ReadFile(filepath.Join(inventory, "rpm-packages.txt"))
+	data, err := readRecoveryInventory(inventory, "rpm-packages.txt", 4<<20)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -238,7 +293,7 @@ func (a *App) planRecoveryPackages(ctx context.Context, j *RecoveryJob, inventor
 		}
 		j.Packages = append(j.Packages, p)
 	}
-	data, err = os.ReadFile(filepath.Join(inventory, "flatpak-apps.tsv"))
+	data, err = readRecoveryInventory(inventory, "flatpak-apps.tsv", 4<<20)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -257,6 +312,9 @@ func (a *App) planRecoveryPackages(ctx context.Context, j *RecoveryJob, inventor
 			p.Reason = "Invalid Flatpak identifier"
 		}
 		var remote *RecoveryRemote
+		if p.Scope != "user" && p.Scope != "system" {
+			remotes = append(remotes, recoveryRemotes(ctx, p.Scope)...)
+		}
 		for i := range remotes {
 			r := &remotes[i]
 			if r.Name == p.Origin && (r.Scope == p.Scope || r.Scope == "default" && p.Scope == "system") {
@@ -266,18 +324,43 @@ func (a *App) planRecoveryPackages(ctx context.Context, j *RecoveryJob, inventor
 		}
 		if remote == nil {
 			p.Status = "Blocked"
-			p.Reason = "Remote is not configured in the original installation scope"
+			p.Reason = "Remote identity is not recorded; configure the original source or deselect this app"
+			private := false
+			for _, old := range enhanced.Remotes {
+				if old.Name == p.Origin && (old.Scope == p.Scope || old.Scope == "default" && p.Scope == "system") {
+					p.URL = old.URL
+					p.Key = old.Key
+					p.KeyData = old.KeyData
+					private = old.RequiresAuth
+					break
+				}
+			}
+			if p.URL == "" {
+				p.URL = legacyRemoteURL(inventory, p.Origin, p.Scope)
+			}
+			if !private && validRecoverySource(p) == nil {
+				p.AddRemote = true
+				p.Status = "Needs source approval"
+				p.Reason = "Approve adding " + p.Scope + " source " + p.Origin + " (" + p.URL + ") before installation"
+				for _, id := range j.ApprovedSources {
+					if id == p.SourceID() {
+						p.Status = "Pending"
+						p.Arch = hostArch()
+						p.Reason = "Approved new source: " + p.URL
+					}
+				}
+			}
 		} else {
 			p.URL = remote.URL
 			p.Key = remote.Key
 			for _, old := range enhanced.Remotes {
-				if old.Name == p.Origin && (old.Scope == p.Scope || old.Scope == "default" && p.Scope == "system") && (old.URL != remote.URL || old.Key != "" && old.Key != remote.Key) {
+				if old.Name == p.Origin && (old.Scope == p.Scope || old.Scope == "default" && p.Scope == "system") && (old.URL != remote.URL || old.Key != "" && old.Key != remote.Key && old.Key != remote.RawKey) {
 					p.Status = "Blocked"
 					p.Reason = "Flatpak remote identity differs from the backup"
 				}
 			}
 		}
-		if p.Status == "Pending" {
+		if p.Status == "Pending" && !p.AddRemote {
 			args := append([]string{"info"}, flatpakScope(p.Scope)...)
 			args = append(args, p.Name+"//"+p.Branch)
 			if _, err := commandOutput(ctx, "flatpak", args...); err == nil {
@@ -343,7 +426,7 @@ func (a *App) resolveRecoveryDNF(ctx context.Context, j *RecoveryJob, dir string
 	return nil
 }
 
-func (a *App) SelectRecovery(ctx context.Context, id string, groups, skip, skipFiles []string) (*RecoveryJob, error) {
+func (a *App) SelectRecovery(ctx context.Context, id string, groups, skip, skipFiles []string, approved ...[]string) (*RecoveryJob, error) {
 	unlock, err := a.lockOperation()
 	if err != nil {
 		return nil, err
@@ -369,6 +452,12 @@ func (a *App) SelectRecovery(ctx context.Context, id string, groups, skip, skipF
 	}
 	if skipFiles != nil {
 		j.SkipFiles = skipFiles
+	}
+	if len(approved) > 0 && approved[0] != nil {
+		j.ApprovedSources, err = approvedRecoverySources(j.Packages, approved[0])
+		if err != nil {
+			return j, err
+		}
 	}
 	dir, _ := a.recoveryDir(id)
 	stage := filepath.Join(dir, "stage")

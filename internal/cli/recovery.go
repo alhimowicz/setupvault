@@ -30,14 +30,14 @@ func executeRecovery(ctx context.Context, a *vault.App, action string, o *option
 			}
 		}
 		if o.job != "" {
-			return a.SelectRecovery(ctx, o.job, groups, o.skipApps, o.skipFiles)
+			return a.SelectRecovery(ctx, o.job, groups, o.skipApps, o.skipFiles, o.approveSources)
 		}
 		j, err := a.PlanRecovery(ctx, o.snapshot, groups, progress)
 		if err != nil {
 			return j, err
 		}
-		if len(o.skipApps) > 0 || len(o.skipFiles) > 0 {
-			return a.SelectRecovery(ctx, j.ID, nil, o.skipApps, o.skipFiles)
+		if len(o.skipApps) > 0 || len(o.skipFiles) > 0 || len(o.approveSources) > 0 {
+			return a.SelectRecovery(ctx, j.ID, nil, o.skipApps, o.skipFiles, o.approveSources)
 		}
 		return j, nil
 	case "apply-recovery", "resume-recovery":

@@ -42,6 +42,11 @@ func validatePackageRequest(r *packageRequest) error {
 		}
 	}
 	for _, p := range r.Flatpaks {
+		if p.AddRemote {
+			if err := validRecoverySource(p); err != nil {
+				return err
+			}
+		}
 		if p.Kind != "flatpak" || p.Scope == "user" || !validPackage(p.Scope) || !validPackage(p.Name) || !validPackage(p.Origin) || !validPackage(p.Branch) || p.Arch != "" && !validPackage(p.Arch) {
 			return errors.New("invalid system Flatpak request")
 		}
@@ -138,7 +143,7 @@ func AuthorizeRecoveryPackages(ctx context.Context, input io.Reader) error {
 	if err = rootJSON(filepath.Join(dir, "result.json"), packageResult{Status: "Queued", Phase: "Package installation queued"}, gid); err != nil {
 		return err
 	}
-	args := []string{"--quiet", "--collect", "--service-type=exec", "--unit=" + packageUnit(uid, request.ID), "--property=UMask=0077", "--property=KillMode=mixed", "--property=TimeoutStopSec=10min", "/usr/bin/setupvault", "internal-recovery-packages", uid, request.ID}
+	args := []string{"--quiet", "--collect", "--service-type=exec", "--unit=" + packageUnit(uid, request.ID), "--property=UMask=0022", "--property=KillMode=mixed", "--property=TimeoutStopSec=10min", "/usr/bin/setupvault", "internal-recovery-packages", uid, request.ID}
 	if _, err = commandOutput(ctx, "/usr/bin/systemd-run", args...); err != nil {
 		return err
 	}
@@ -209,16 +214,18 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(actual, expected) {
+		if !reviewedDNF(actual, expected) {
 			return errors.New("package transaction changed since review; prepare a new plan")
 		}
-		status.Phase = "Installing approved RPM transaction"
-		if err = save(); err != nil {
-			return err
-		}
-		// A package commit finishes before normal cancellation is acted on.
-		if _, err = commandOutput(context.Background(), "/usr/bin/dnf", "--assumeyes", "--setopt=install_weak_deps=False", "--setopt=obsoletes=0", "replay", txdir); err != nil {
-			return err
+		if len(actual) > 0 {
+			status.Phase = "Installing approved RPM transaction"
+			if err = save(); err != nil {
+				return err
+			}
+			// A package commit finishes before normal cancellation is acted on.
+			if _, err = commandOutput(context.Background(), "/usr/bin/dnf", "--assumeyes", "--setopt=install_weak_deps=False", "--setopt=obsoletes=0", "replay", txdir); err != nil {
+				return err
+			}
 		}
 	}
 	for _, p := range r.Flatpaks {
@@ -240,13 +247,20 @@ func RunRecoveryPackages(ctx context.Context, uid, id string) (result error) {
 }
 
 func checkFlatpakRemote(ctx context.Context, p RecoveryPackage) error {
-	for _, r := range recoveryRemotes(ctx) {
+	for _, r := range recoveryRemotes(ctx, p.Scope) {
 		if r.Name == p.Origin && r.Scope == p.Scope {
-			if r.URL != p.URL || p.Key != "" && r.Key != p.Key {
+			if r.URL != p.URL || p.Key != "" && r.Key != p.Key && r.RawKey != p.Key {
 				return errors.New("Flatpak remote identity changed since review")
 			}
 			return nil
 		}
+	}
+	if p.AddRemote {
+		if err := addRecoveryRemote(ctx, p); err != nil {
+			return err
+		}
+		p.AddRemote = false
+		return checkFlatpakRemote(ctx, p)
 	}
 	return errors.New("Flatpak remote is no longer configured")
 }
@@ -267,6 +281,9 @@ func installFlatpak(ctx context.Context, p RecoveryPackage) error {
 }
 
 func (a *App) authorizeRecovery(ctx context.Context, j *RecoveryJob) error {
+	if _, err := os.Stat("/usr/bin/setupvault"); err != nil {
+		return errors.New("install the SetupVault Fedora RPM to enable authorized system app recovery")
+	}
 	r := packageRequest{Version: 1, ID: j.ID, Expected: j.DNF}
 	if j.Selected("apps") {
 		for _, p := range j.Packages {
