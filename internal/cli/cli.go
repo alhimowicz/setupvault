@@ -40,6 +40,9 @@ func (v *list) String() string     { return strings.Join(*v, ",") }
 func (v *list) Set(s string) error { *v = append(*v, s); return nil }
 
 type options struct {
+	job                                                                            string
+	wait                                                                           bool
+	skipApps, skipFiles                                                            list
 	config, state, file, snapshot, target, passwordFile                            string
 	json, nonInteractive, passwordStdin, storePassword, allowInteraction, progress bool
 	name, repository, selected, rcloneConfig, calendar, provider                   string
@@ -68,6 +71,7 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 		"connections": "List rclone connections", "test-connection": "Test destination write and read", "quota": "Read cloud storage usage",
 		"set-password": "Store supplied password in desktop keyring", "enable-system": "Authorize installed protected system export helper",
 		"activity": "Read recent activity", "version": "Show application version",
+		"plan-recovery": "Prepare and compare a guided setup recovery", "apply-recovery": "Start an asynchronous reviewed recovery job", "recovery-status": "Read a recovery job or list jobs", "resume-recovery": "Resume a stopped recovery", "cancel-recovery": "Stop recovery after the current transaction", "undo-recovery-settings": "Undo applied user files and desktop settings",
 	} {
 		actions[name] = f.Bool(name, false, description)
 	}
@@ -78,6 +82,10 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 	f.DurationVar(&o.timeout, "timeout", 0, "Operation deadline, e.g. 30s or 15m; 0 disables")
 	f.StringVar(&o.file, "file", "", "Recovery profile path for --import or --export")
 	f.StringVar(&o.snapshot, "snapshot", "", "Snapshot ID or latest for --restore")
+	f.StringVar(&o.job, "job", "", "Recovery job ID")
+	f.BoolVar(&o.wait, "wait", false, "Wait for asynchronous recovery; a waiting timeout leaves the job running")
+	f.Var(&o.skipApps, "skip-app", "With --plan-recovery: deselect an app ID or name; repeatable")
+	f.Var(&o.skipFiles, "skip-file", "With --plan-recovery: deselect a relative home path; repeatable")
 	f.StringVar(&o.target, "target", "", "Empty absolute restore folder")
 	f.StringVar(&o.passwordFile, "password-file", "", "Password from private regular file; '-' reads stdin")
 	f.BoolVar(&o.passwordStdin, "password-stdin", false, "Read password from stdin through EOF")
@@ -100,12 +108,17 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 		if err != nil {
 			e := &failure{"operation_failed", err.Error(), 1}
 			var typed *failure
+			var dependency *vault.DependencyError
 			if errors.As(err, &typed) {
 				e = typed
 			} else if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 				e = &failure{"canceled", "operation canceled", 130}
 			} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				e = &failure{"timeout", "operation deadline exceeded", 124}
+			} else if errors.Is(err, vault.ErrRecoveryInteraction) {
+				e = &failure{"interaction_required", err.Error(), 3}
+			} else if errors.As(err, &dependency) {
+				e = &failure{"dependency_missing", err.Error(), 3}
 			} else if errors.Is(err, vault.ErrCredentialsRequired) {
 				e = &failure{"credentials_required", err.Error(), 3}
 			}
@@ -243,7 +256,7 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 	if err != nil {
 		return finish(nil, err)
 	}
-	if action == "import" || action == "set-password" || action == "backup" || action == "verify" || action == "snapshots" || action == "restore" || action == "export" {
+	if action == "import" || action == "set-password" || action == "backup" || action == "verify" || action == "snapshots" || action == "restore" || action == "export" || action == "plan-recovery" && o.job == "" {
 		if o.passwordFile != "" || o.passwordStdin {
 			password, e := readPassword(ctx, o.passwordFile, o.passwordStdin, in)
 			if e != nil {
@@ -307,6 +320,23 @@ func validateFlags(action string, seen map[string]bool, o *options) error {
 		}
 	}
 	switch action {
+	case "plan-recovery":
+		add("snapshot", "job", "select", "skip-app", "skip-file", "password-file", "password-stdin", "progress")
+		if o.job == "" && o.snapshot == "" {
+			return invalid("--plan-recovery requires --snapshot or --job")
+		}
+	case "apply-recovery", "resume-recovery":
+		add("job", "wait", "progress", "allow-interaction")
+		if o.job == "" {
+			return invalid("recovery action requires --job")
+		}
+	case "cancel-recovery", "undo-recovery-settings":
+		add("job")
+		if o.job == "" {
+			return invalid("recovery action requires --job")
+		}
+	case "recovery-status":
+		add("job")
 	case "set-config":
 		add("name", "repository", "select", "keep-last", "rclone-config", "include", "exclude", "remove-include", "remove-exclude")
 	case "backup":
@@ -349,6 +379,8 @@ func validateFlags(action string, seen map[string]bool, o *options) error {
 
 func execute(ctx context.Context, a *vault.App, action string, o *options, seen map[string]bool, stderr io.Writer) (any, error) {
 	switch action {
+	case "plan-recovery", "apply-recovery", "recovery-status", "resume-recovery", "cancel-recovery", "undo-recovery-settings":
+		return executeRecovery(ctx, a, action, o, seen, stderr)
 	case "status":
 		_, err := os.Stat(a.ProfilePath())
 		return map[string]any{"configured": err == nil, "name": a.Profile.Name, "state": a.State(), "next_run": a.NextRun(ctx)}, nil

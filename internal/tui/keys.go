@@ -121,6 +121,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch m.page {
 	case 1:
 		switch key {
+		case "i":
+			if vault.CheckDependency("rclone") == nil {
+				m.message = "rclone is already installed"
+				return nil
+			}
+			return m.start("Installing rclone; authorize in the desktop dialog", func(_ context.Context, _ *vault.App, _ func(vault.Progress)) (event, error) {
+				return event{text: "rclone installed; cloud connectors are available"}, vault.InstallRuntime("rclone")
+			})
 		case "d", "o":
 			provider := "dropbox"
 			if key == "o" {
@@ -199,10 +207,28 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	case 3:
+		if m.recovery != nil && !m.recoveryBrowse {
+			return m.recoveryKey(key)
+		}
+		if (key == "j" || key == "esc") && m.recovery != nil {
+			m.recoveryBrowse = false
+			return nil
+		}
+		if key == "i" {
+			return m.openRecoveryImport()
+		}
 		if key == "r" {
 			return m.loadSnapshots()
 		}
-		if key == "enter" && len(m.snapshots) > 0 {
+		if (key == "enter" || key == "a") && len(m.snapshots) > 0 {
+			m.cursor = min(m.cursor, len(m.snapshots)-1)
+			id := m.snapshots[m.cursor].ID
+			return m.start("Preparing and verifying setup recovery", func(ctx context.Context, a *vault.App, p func(vault.Progress)) (event, error) {
+				j, err := a.PlanRecovery(ctx, id, nil, p)
+				return event{text: "Review the recovery plan; live settings have not changed", recovery: j}, err
+			})
+		}
+		if key == "e" && len(m.snapshots) > 0 {
 			m.cursor = min(m.cursor, len(m.snapshots)-1)
 			return m.openForm("restore", "Restore into a new, empty folder", []string{"Restore folder"}, []string{filepath.Join(m.app.Profile.Home, "SetupVault-Restore", time.Now().Format("20060102-150405"))}, false)
 		}

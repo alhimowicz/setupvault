@@ -33,6 +33,9 @@ func (a *App) Groups() []Group {
 		{ID: "system", Name: "Custom system configuration", Note: "Enable administrator access once from Contents (requires RPM installation).", Paths: []string{filepath.Join("/var/lib/setupvault", fmt.Sprint(os.Getuid()), "system-config.tar")}},
 		{ID: "manual", Name: "Manual apps, AppImages and user plugins", Paths: []string{filepath.Join(h, "AppImages"), filepath.Join(h, ".local/bin"), filepath.Join(h, ".local/opt"), filepath.Join(h, "opt"), filepath.Join(h, ".vst3"), filepath.Join(h, ".local/share/yabridge")}},
 	}
+	for _, name := range []string{".profile", ".bash_aliases", ".inputrc", ".zprofile", ".zshenv", ".zlogin", ".p10k.zsh", ".bash_logout", ".zlogout"} {
+		groups[2].Paths = append(groups[2].Paths, filepath.Join(h, name))
+	}
 	entries, _ := os.ReadDir(filepath.Join(h, ".var/app"))
 	for _, e := range entries {
 		if !e.IsDir() || excludedApps[e.Name()] {
@@ -138,6 +141,7 @@ func DefaultExclusions(home string) []string {
 func (a *App) Exclusions() []string {
 	result := append([]string{}, a.Profile.Excludes...)
 	result = append(result, a.ConfigDir+"/**")
+	result = append(result, filepath.Join(a.StateDir, "recovery")+"/**")
 	for _, n := range []string{"state.json", "activity.log", "backup.lock", "*.service", "*.timer"} {
 		result = append(result, filepath.Join(a.StateDir, n))
 	}
@@ -223,6 +227,13 @@ func (a *App) Collect(ctx context.Context) (string, error) {
 	}
 	if err := writeJSON(filepath.Join(a.InventoryDir(), "manifest.json"), manifest); err != nil {
 		return "", err
+	}
+	if apps {
+		if err := a.collectRecoveryInventory(ctx); err != nil {
+			return "", err
+		}
+	} else {
+		_ = os.Remove(filepath.Join(a.InventoryDir(), "recovery-inventory.json"))
 	}
 	if err := writeJSON(filepath.Join(a.InventoryDir(), "profile.json"), a.Profile); err != nil {
 		return "", err

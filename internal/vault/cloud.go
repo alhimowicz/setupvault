@@ -22,6 +22,9 @@ type Remote struct {
 var sensitive = regexp.MustCompile(`(?i)(access_token|refresh_token|client_secret|authid|token|password)(["\s:=]+)[^\s&,"}]+`)
 
 func (a *App) rclone(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+	if err := CheckDependency("rclone"); err != nil {
+		return nil, err
+	}
 	if a.Profile.RcloneConfig != "" {
 		args = append([]string{"--config", a.Profile.RcloneConfig}, args...)
 	}

@@ -24,6 +24,7 @@ type Snapshot struct {
 	Time     time.Time `json:"time"`
 	Hostname string    `json:"hostname"`
 	Paths    []string  `json:"paths"`
+	Tags     []string  `json:"tags"`
 }
 
 type Progress struct {
@@ -61,6 +62,9 @@ func (a *App) restic(ctx context.Context, args []string, progress func(Progress)
 }
 
 func (a *App) runRestic(ctx context.Context, args []string, progress func(Progress)) ([]byte, error) {
+	if err := CheckDependency("restic"); err != nil {
+		return nil, err
+	}
 	if a.Profile.Repository == "" {
 		return nil, errors.New("choose a destination in Connections first")
 	}
@@ -123,7 +127,11 @@ func (a *App) runRestic(ctx context.Context, args []string, progress func(Progre
 				TotalBytes uint64 `json:"total_bytes"`
 			}
 			if json.Unmarshal(line, &p) == nil && p.Type == "status" {
-				progress(Progress{"Backing up", p.Files, p.TotalFiles, p.Bytes, p.TotalBytes})
+				phase := "Backing up"
+				if len(args) > 0 && args[0] == "restore" {
+					phase = "Restoring backup"
+				}
+				progress(Progress{phase, p.Files, p.TotalFiles, p.Bytes, p.TotalBytes})
 			}
 		}
 	}
@@ -177,6 +185,10 @@ func (a *App) initialize(ctx context.Context) error {
 }
 
 func (a *App) lockOperation() (func(), error) {
+	return a.lockProfile("")
+}
+
+func (a *App) lockProfile(except string) (func(), error) {
 	if err := os.MkdirAll(a.StateDir, 0700); err != nil {
 		return nil, err
 	}
@@ -187,6 +199,11 @@ func (a *App) lockOperation() (func(), error) {
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		lock.Close()
 		return nil, errors.New("another repository operation is already running for this profile; wait for it to finish")
+	}
+	if err = a.noActiveRecovery(except); err != nil {
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		lock.Close()
+		return nil, err
 	}
 	return func() {
 		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)

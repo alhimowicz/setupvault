@@ -26,6 +26,12 @@ func run(ctx context.Context, args []string) int {
 		err = vault.EnableSystemAccess()
 	} else if len(args) == 2 && args[0] == "internal-system-export" {
 		err = vault.ExportSystem(args[1])
+	} else if len(args) == 4 && args[0] == "internal-recovery-worker" {
+		err = vault.RunRecoveryWorker(ctx, args[1], args[2], args[3])
+	} else if len(args) == 1 && args[0] == "internal-authorize-recovery" {
+		err = vault.AuthorizeRecoveryPackages(ctx, os.Stdin)
+	} else if len(args) == 3 && args[0] == "internal-recovery-packages" {
+		err = vault.RunRecoveryPackages(ctx, args[1], args[2])
 	} else {
 		v := version
 		if v == "dev" {

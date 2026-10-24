@@ -20,6 +20,9 @@ func (m Model) fetchStatus() tea.Cmd {
 		defer cancel()
 		e := event{next: a.NextRun(ctx), repository: a.Profile.Repository}
 		e.remotes, _ = a.Remotes(ctx)
+		if err := vault.CheckDependency("rclone"); err != nil {
+			e.connectorError = err.Error()
+		}
 		if q, err := a.Quota(ctx); err == nil {
 			e.quota = &q
 		}
@@ -38,7 +41,7 @@ func waitEvent(ch <-chan event) tea.Cmd {
 }
 
 func (m *Model) start(label string, fn func(context.Context, *vault.App, func(vault.Progress)) (event, error)) tea.Cmd {
-	animate := !m.busy && !m.refreshing
+	animate := !m.busy && !m.refreshing && (m.recovery == nil || !m.recovery.Active())
 	m.busy = true
 	m.failed = false
 	m.message = label

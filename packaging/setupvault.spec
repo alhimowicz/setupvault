@@ -1,8 +1,8 @@
 %global debug_package %{nil}
 
 Name:           setupvault
-Version:        0.2.2
-Release:        2%{?dist}
+Version:        0.3.0
+Release:        1%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
 URL:            https://github.com/alhimowicz/setupvault
@@ -21,6 +21,9 @@ Requires:       dconf
 Requires:       flatpak
 Requires:       dnf5
 Requires:       tar
+Requires:       dbus-daemon
+Requires:       procps-ng
+Requires:       glib2
 
 %description
 SetupVault is a Bubble Tea terminal interface for encrypted, versioned backups
@@ -73,6 +76,11 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.3.0-1
+- Add reviewed asynchronous app and settings recovery with resume and settings undo
+- Restore terminal and shell preferences and report missing cloud dependencies
+- Install system Flatpaks with an isolated D-Bus session
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.2.2-2
 - Keep terminal help visible and scroll long content on small screens
 

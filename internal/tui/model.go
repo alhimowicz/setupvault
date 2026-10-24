@@ -11,16 +11,20 @@ import (
 )
 
 type event struct {
-	text       string
-	err        error
-	done       bool
-	progress   vault.Progress
-	remotes    []vault.Remote
-	snapshots  []vault.Snapshot
-	quota      *vault.Quota
-	next       string
-	connected  string
-	repository string
+	text             string
+	err              error
+	done             bool
+	progress         vault.Progress
+	remotes          []vault.Remote
+	snapshots        []vault.Snapshot
+	quota            *vault.Quota
+	next             string
+	connected        string
+	repository       string
+	recovery         *vault.RecoveryJob
+	imported         bool
+	connectorError   string
+	recoveryKeepView bool
 }
 
 type refreshMsg event
@@ -64,6 +68,10 @@ type Model struct {
 	remote                      string
 	spinner                     spinner.Model
 	refreshing                  bool
+	recovery                    *vault.RecoveryJob
+	recoveryMode                string
+	recoveryBrowse              bool
+	connectorError              string
 }
 
 func New(a *vault.App) Model {
@@ -79,12 +87,45 @@ func New(a *vault.App) Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd { return tea.Batch(m.fetchStatus(), tick(), m.spinner.Tick) }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(m.fetchStatus(), tick(), m.spinner.Tick, m.fetchRecovery(), recoveryTick())
+}
 
 func tick() tea.Cmd { return tea.Tick(15*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case recoveryPollMsg:
+		return m, tea.Batch(m.fetchRecovery(), recoveryTick())
+	case recoveryStatusMsg:
+		if msg.profile != m.app.Profile.ID {
+			return m, nil
+		}
+		wasActive := m.recovery != nil && m.recovery.Active()
+		if len(msg.jobs) > 0 {
+			chosen := &msg.jobs[len(msg.jobs)-1]
+			if m.recovery != nil {
+				for i := range msg.jobs {
+					if msg.jobs[i].ID == m.recovery.ID {
+						chosen = &msg.jobs[i]
+						break
+					}
+				}
+			}
+			m.recovery = chosen
+			if wasActive && !chosen.Active() {
+				m.message = "Recovery " + chosen.Status + ": " + chosen.Phase
+				if chosen.Error != "" {
+					m.message += "\n" + chosen.Error
+				}
+				m.failed = chosen.Status == "Failed" || chosen.Status == "Partial"
+				m.scroll = m.maxScroll()
+			}
+		}
+		if !wasActive && m.recovery != nil && m.recovery.Active() && !m.busy && !m.refreshing {
+			return m, m.spinner.Tick
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -97,12 +138,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshing = true
 		cmd := m.fetchStatus()
-		if !m.busy {
+		if !m.busy && (m.recovery == nil || !m.recovery.Active()) {
 			cmd = tea.Batch(cmd, m.spinner.Tick)
 		}
 		return m, cmd
 	case spinner.TickMsg:
-		if !m.busy && !m.refreshing {
+		if !m.busy && !m.refreshing && (m.recovery == nil || !m.recovery.Active()) {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -116,6 +157,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.remotes = msg.remotes
 		m.quota = msg.quota
 		m.next = msg.next
+		m.connectorError = msg.connectorError
 		return m, nil
 	case editorMsg:
 		if msg.err != nil {
@@ -164,6 +206,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.snapshots != nil {
 			m.snapshots = msg.snapshots
 			m.cursor = max(0, len(m.snapshots)-1)
+		}
+		if msg.recovery != nil {
+			m.recovery = msg.recovery
+			if !msg.recoveryKeepView {
+				m.recoveryMode = "groups"
+				m.cursor = 0
+			}
+			m.recoveryBrowse = false
+			m.page = 3
+			m.scroll = 0
+		}
+		if msg.imported {
+			m.page = 3
+			m.snapshots = nil
+			m.recovery = nil
+			m.recoveryBrowse = false
+			m.message = "Profile imported. Press r to choose a backup and restore your setup; reconnect in Connections if needed."
 		}
 		if msg.connected != "" {
 			m.remote = msg.connected

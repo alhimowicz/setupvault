@@ -43,7 +43,7 @@ func size(n uint64) string {
 func (m Model) content() string {
 	var b strings.Builder
 	b.WriteString(heading.Render("SetupVault") + "  " + m.app.Profile.Name)
-	if m.busy || m.refreshing {
+	if m.busy || m.refreshing || m.recovery != nil && m.recovery.Active() {
 		b.WriteString("  " + m.spinner.View())
 	}
 	b.WriteString("\n")
@@ -65,6 +65,9 @@ func (m Model) content() string {
 		s := m.app.State()
 		switch m.page {
 		case 0:
+			if m.recovery != nil {
+				b.WriteString("Recovery        " + m.recovery.Status + " · " + m.recovery.Phase + "\nOpen Restore for progress, review and settings Undo.\n\n")
+			}
 			status := warning.Render(s.Status)
 			if s.Status == "Healthy" {
 				status = healthy.Render(s.Status)
@@ -92,6 +95,9 @@ func (m Model) content() string {
 			}
 			b.WriteString("\n[b] Back up now   [v] Verify backup   Tab: navigate")
 		case 1:
+			if m.connectorError != "" {
+				b.WriteString(warning.Render(ansi.Wrap(m.connectorError+"\n[i] Install rclone (administrator authentication)", max(1, m.width-4), "")) + "\nLocal-folder backups remain available.\n\n")
+			}
 			b.WriteString("[d] Connect Dropbox   [o] Connect OneDrive   [l] Local folder\n[t] Test current destination   Enter: use selected connection\n\n")
 			if len(m.remotes) == 0 {
 				if m.refreshing {
@@ -153,7 +159,14 @@ func (m Model) content() string {
 			}
 			b.WriteString("\n" + muted.Render("App settings can live outside common config folders. Add explicit paths when needed.\nDocuments, browser profiles, caches and local mail are excluded by default."))
 		case 3:
-			b.WriteString("[r] Load snapshots   Enter: restore selected snapshot to a new folder\n\n")
+			if m.recovery != nil && !m.recoveryBrowse {
+				b.WriteString(m.recoveryView())
+				break
+			}
+			b.WriteString("[i] Import profile   [r] Load snapshots\nEnter: Restore my setup   [e] Extract files only\n\n")
+			if m.recovery != nil {
+				b.WriteString("[j] Return to recovery " + m.recovery.ID + "\n")
+			}
 			if len(m.snapshots) == 0 {
 				b.WriteString("Load backup history to choose a dated snapshot.\n")
 			}
@@ -164,7 +177,7 @@ func (m Model) content() string {
 				}
 				b.WriteString(prefix + stamp(s.Time) + "  " + short(s.ID) + "  " + s.Hostname + "\n")
 			}
-			b.WriteString("\n" + muted.Render("Restores never overwrite your home or /. Review restored settings first.\nThe restored inventory contains RPM/Flatpak lists for reinstalling packaged apps.\nSystem configuration is archived separately for selective administrator restore."))
+			b.WriteString("\n" + muted.Render("Restore my setup prepares a review before installing apps and applying settings.\nExtract files only writes into a separate empty folder.\nSystem configuration is staged for selective administrator review."))
 		case 4:
 			calendar := m.app.Profile.Schedule
 			if calendar == "" {

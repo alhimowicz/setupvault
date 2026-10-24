@@ -132,7 +132,7 @@ func (m *Model) submit() tea.Cmd {
 	case "import":
 		path, password := expand(values[0]), values[1]
 		return m.start("Unlocking recovery profile", func(ctx context.Context, a *vault.App, _ func(vault.Progress)) (event, error) {
-			return event{text: "Recovery profile imported. Review Contents; scheduling remains off. Reconnect your cloud account if needed."}, a.Import(ctx, path, password)
+			return event{text: "Recovery profile imported. Review Contents; scheduling remains off. Reconnect your cloud account if needed.", imported: true}, a.Import(ctx, path, password)
 		})
 	case "restore":
 		path := expand(values[0])
