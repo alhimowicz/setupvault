@@ -13,7 +13,9 @@ test:
 dist:
 	$(GO) mod vendor
 	mkdir -p dist
-	tar --exclude=./.git --exclude=./bin --exclude=./dist --transform='s,^\.,setupvault-$(VERSION),' -czf dist/setupvault-$(VERSION).tar.gz .
+	git ls-files -z > dist/source-files
+	printf 'vendor\0' >> dist/source-files
+	tar --null --files-from=dist/source-files --transform='s,^,setupvault-$(VERSION)/,' -czf dist/setupvault-$(VERSION).tar.gz
 
 rpm: dist
 	mkdir -p dist/rpmbuild
