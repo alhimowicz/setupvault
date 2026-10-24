@@ -32,6 +32,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key == "ctrl+c" {
 		if m.busy {
 			m.confirmQuit = true
+			m.scroll = m.maxScroll()
 			return nil
 		}
 		return tea.Quit
@@ -65,11 +66,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key == "q" {
 		if m.busy {
 			m.confirmQuit = true
+			m.scroll = m.maxScroll()
 			return nil
 		}
 		return tea.Quit
 	}
 	if key == "tab" || key == "shift+tab" {
+		m.scroll = 0
 		step := 1
 		if key == "shift+tab" {
 			step = -1
@@ -85,9 +88,18 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.message = "Canceling; waiting for the backup engine to stop"
 		return nil
 	}
+	if key == "pgup" || key == "pgdown" {
+		step := max(1, m.height-6)
+		if key == "pgup" {
+			step = -step
+		}
+		m.scroll = max(0, min(m.maxScroll(), m.scroll+step))
+		return nil
+	}
 	if m.busy {
 		return nil
 	}
+	m.scroll = 0
 	if key == "up" {
 		m.cursor = max(0, m.cursor-1)
 		return nil

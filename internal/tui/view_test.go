@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/alhimowicz/setupvault/internal/vault"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -17,6 +18,7 @@ func TestLongNoticesWrapWithoutDroppingText(t *testing.T) {
 		for _, failed := range []bool{false, true} {
 			m := testModel(t)
 			m.width = width
+			m.height = 100
 			m.refreshing = false
 			m.failed = failed
 			m.message = "NOTICESTART A long message with a path /" + strings.Repeat("verylongsegment", 12) + " and Unicode 世界界界. NOTICEEND"
@@ -62,6 +64,7 @@ func TestSavedFailureReasonVisibleAfterRestart(t *testing.T) {
 	}
 	m = New(m.app)
 	m.width = 50
+	m.height = 50
 	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "Last issue:") || !strings.Contains(view, "OWNER-PID-1234") {
 		t.Fatal("saved failure reason hidden after restart", view)
@@ -70,5 +73,49 @@ func TestSavedFailureReasonVisibleAfterRestart(t *testing.T) {
 		if ansi.StringWidth(line) > m.width {
 			t.Fatal("saved failure overflowed the terminal", line)
 		}
+	}
+}
+
+func TestSmallTerminalKeepsHelpVisibleAndCanScrollLongError(t *testing.T) {
+	m := testModel(t)
+	m.width, m.height = 80, 24
+	m.message = "ERRORSTART " + strings.Repeat("A long warning to read fully. ", 80) + " ERROREND"
+	m.failed = true
+	var sawStart, sawEnd bool
+	for range 20 {
+		view := ansi.Strip(m.View().Content)
+		if !strings.Contains(view, "q quit") || !strings.Contains(view, "PgUp/PgDn") {
+			t.Fatal("footer hidden in a small terminal", view)
+		}
+		if len(strings.Split(view, "\n")) > m.height {
+			t.Fatal("view overflowed terminal height")
+		}
+		sawStart = sawStart || strings.Contains(view, "ERRORSTART")
+		sawEnd = sawEnd || strings.Contains(view, "ERROREND")
+		m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	}
+	if !sawStart || !sawEnd {
+		t.Fatal("could not scroll through the complete error")
+	}
+	for range 20 {
+		m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	}
+	if m.scroll != 0 || !strings.Contains(ansi.Strip(m.View().Content), "SetupVault") {
+		t.Fatal("could not scroll back to the top")
+	}
+}
+
+func TestActivityWrapsLongLoggedError(t *testing.T) {
+	m := testModel(t)
+	m.page, m.width, m.height = 5, 50, 100
+	if err := os.MkdirAll(m.app.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(m.app.StateDir, "activity.log"), []byte("LOGSTART "+strings.Repeat("long/path/", 30)+" LOGEND\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "LOGSTART") || !strings.Contains(view, "LOGEND") {
+		t.Fatal("logged error was clipped", view)
 	}
 }

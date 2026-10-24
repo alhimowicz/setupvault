@@ -2,7 +2,7 @@
 
 Name:           setupvault
 Version:        0.2.2
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
 URL:            https://github.com/alhimowicz/setupvault
@@ -73,6 +73,9 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.2.2-2
+- Keep terminal help visible and scroll long content on small screens
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.2.2-1
 - Cancel restic gracefully and recover stale locks without removing active locks
 - Wait for repository cleanup when exiting the terminal interface

@@ -31,7 +31,7 @@ Building requires Go 1.26 or newer. SetupVault runs as your desktop user. The in
 
 Tab / Shift+Tab changes pages, arrows select, Esc cancels a task, and `q` quits. The app has no persistent web server.
 
-Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
+Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. Page Up / Page Down scroll content on small terminals while navigation help stays visible. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
 
 ## CLI flags for scripts and agents
 

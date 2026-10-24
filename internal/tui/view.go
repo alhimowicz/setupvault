@@ -40,7 +40,7 @@ func size(n uint64) string {
 	return fmt.Sprintf("%.1f %s", v, units[i])
 }
 
-func (m Model) View() tea.View {
+func (m Model) content() string {
 	var b strings.Builder
 	b.WriteString(heading.Render("SetupVault") + "  " + m.app.Profile.Name)
 	if m.busy || m.refreshing {
@@ -176,7 +176,7 @@ func (m Model) View() tea.View {
 			data, _ := os.ReadFile(filepath.Join(m.app.StateDir, "activity.log"))
 			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 			start := max(0, len(lines)-max(3, m.height-12))
-			b.WriteString(strings.Join(lines[start:], "\n"))
+			b.WriteString(ansi.Wrap(strings.Join(lines[start:], "\n"), max(1, m.width-4), ""))
 		}
 	}
 	if m.busy {
@@ -192,11 +192,31 @@ func (m Model) View() tea.View {
 	if m.failed {
 		message = warning.Render(message)
 	}
-	b.WriteString("\n\n" + message + "\n" + muted.Render("Tab/Shift+Tab navigate · ↑↓ select · q quit"))
+	b.WriteString("\n\n" + message)
 	if m.confirmQuit {
 		b.WriteString("\n" + warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
 	}
-	v := tea.NewView(lipgloss.NewStyle().Padding(1, 2).MaxWidth(max(1, m.width)).Render(b.String()))
+	return b.String()
+}
+
+func (m Model) layout() ([]string, string, int) {
+	help := muted.Render(ansi.Wrap("PgUp/PgDn scroll · Tab/Shift+Tab pages · ↑↓ select · q quit", max(1, m.width-4), ""))
+	room := max(1, m.height-2-lipgloss.Height(help))
+	return strings.Split(m.content(), "\n"), help, room
+}
+
+func (m Model) maxScroll() int {
+	lines, _, room := m.layout()
+	return max(0, len(lines)-room)
+}
+
+func (m Model) View() tea.View {
+	lines, help, room := m.layout()
+	start := max(0, min(m.scroll, len(lines)-room))
+	end := min(len(lines), start+room)
+	content := strings.Join(lines[start:end], "\n")
+	content += strings.Repeat("\n", max(1, room-(end-start)+1)) + help
+	v := tea.NewView(lipgloss.NewStyle().Padding(1, 2).MaxWidth(max(1, m.width)).MaxHeight(max(1, m.height)).Render(content))
 	v.AltScreen = true
 	return v
 }

@@ -47,6 +47,7 @@ type form struct {
 type Model struct {
 	app                         *vault.App
 	page, cursor, width, height int
+	scroll                      int
 	expanded                    map[string]bool
 	message                     string
 	failed, busy, confirmQuit   bool
@@ -120,6 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.message = msg.err.Error()
 			m.failed = true
+			m.scroll = m.maxScroll()
 			return m, nil
 		}
 		a, err := vault.New(m.app.ConfigDir, m.app.StateDir)
@@ -129,7 +131,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.app = a
 			m.message = "Profile reloaded"
+			m.failed = false
 		}
+		m.scroll = m.maxScroll()
 		return m, m.refresh()
 	case event:
 		if !msg.done {
@@ -148,10 +152,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.message = msg.err.Error()
 			m.failed = true
+			m.scroll = m.maxScroll()
 			return m, m.refresh()
 		}
 		m.message = msg.text
 		m.failed = false
+		m.scroll = m.maxScroll()
 		if a, err := vault.New(m.app.ConfigDir, m.app.StateDir); err == nil {
 			m.app = a
 		}
@@ -165,7 +171,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.refresh()
 	case tea.KeyPressMsg:
+		previous := m.message
 		cmd := m.handleKey(msg)
+		if m.message != previous {
+			m.scroll = m.maxScroll()
+		}
 		return m, cmd
 
 	}
