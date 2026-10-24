@@ -234,6 +234,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case 4:
 		switch key {
+		case "t":
+			m.toggleTheme()
+			return nil
 		case "n":
 			return m.openForm("name", "Computer/profile name", []string{"Name"}, []string{m.app.Profile.Name}, false)
 		case "p":

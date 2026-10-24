@@ -90,6 +90,30 @@ func TestConfigurationAndValidation(t *testing.T) {
 	}
 }
 
+func TestThemeConfigurationAndInvalidThemeDoNotAffectProfile(t *testing.T) {
+	root, base := fixture(t)
+	ctx := context.Background()
+	code, result, _ := invoke(t, ctx, command(base, "--set-config", "--theme", "monochrome"), "")
+	if code != 0 || result["data"].(map[string]any)["theme"] != "monochrome" {
+		t.Fatal("theme could not be configured", result)
+	}
+	path := filepath.Join(root, "config/profile.json")
+	before, _ := os.ReadFile(path)
+	code, result, _ = invoke(t, ctx, command(base, "--set-config", "--theme", "unknown"), "")
+	after, _ := os.ReadFile(path)
+	if code != 2 || !bytes.Equal(before, after) {
+		t.Fatal("invalid theme changed the profile", result)
+	}
+	code, result, _ = invoke(t, ctx, command(base, "--config"), "")
+	if code != 0 || result["data"].(map[string]any)["theme"] != "monochrome" {
+		t.Fatal("stored theme was not readable", result)
+	}
+	code, result, _ = invoke(t, ctx, command(base, "--set-config", "--theme", "terminal"), "")
+	if code != 0 || result["data"].(map[string]any)["theme"] != "terminal" {
+		t.Fatal("terminal theme could not be restored", result)
+	}
+}
+
 func TestInvalidInputAndNoImplicitInteraction(t *testing.T) {
 	_, base := fixture(t)
 	ctx := context.Background()

@@ -33,6 +33,22 @@ Tab / Shift+Tab changes pages, arrows select, Esc cancels a foreground task, and
 
 Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. Page Up / Page Down scroll content on small terminals while navigation help stays visible. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
 
+## Terminal appearance
+
+SetupVault uses the terminal's default foreground/background and basic ANSI palette. It keeps the terminal background and transparency, uses themed accents for status, and marks selected tabs with brackets and reverse video. Colors are shared across screens, loading indicators and input fields.
+
+In **Settings**, press **t** to switch between **Terminal** (default) and **Monochrome**. The choice is saved immediately and restored next time. Any nonempty `NO_COLOR` value, including `0` or `false`, forces monochrome; `TERM=dumb` does too. Settings shows when an environment override is active. Bold, reverse video and text labels remain useful without color.
+
+The same preference is configurable through the CLI:
+
+```sh
+setupvault --set-config --theme monochrome --json
+setupvault --set-config --theme terminal --json
+NO_COLOR=1 setupvault
+```
+
+Terminal colors come from the terminal emulator's own palette, so existing terminal themes work without separate SetupVault theme files. Individual palette contrast remains under the terminal user's control. CLI JSON and progress output stay free of color escapes.
+
 ## CLI flags for scripts and agents
 
 Use ordinary flags for automation. `--json` returns one response on stdout, including failures, and implies noninteractive operation. `--help --json` lists the supported parameters. Existing commands such as `setupvault backup` and `setupvault restore ID NEW_FOLDER` still work.

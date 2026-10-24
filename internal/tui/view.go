@@ -14,14 +14,6 @@ import (
 
 var pages = []string{"Overview", "Connections", "Contents", "Restore", "Settings", "Activity"}
 
-var heading = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
-
-var muted = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-
-var warning = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-
-var healthy = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
-
 func stamp(t time.Time) string {
 	if t.IsZero() {
 		return "Never"
@@ -42,7 +34,7 @@ func size(n uint64) string {
 
 func (m Model) content() string {
 	var b strings.Builder
-	b.WriteString(heading.Render("SetupVault") + "  " + m.app.Profile.Name)
+	b.WriteString(m.styles.heading.Render("SetupVault") + "  " + m.app.Profile.Name)
 	if m.busy || m.refreshing || m.recovery != nil && m.recovery.Active() {
 		b.WriteString("  " + m.spinner.View())
 	}
@@ -50,17 +42,17 @@ func (m Model) content() string {
 	for i, p := range pages {
 		label := fmt.Sprintf(" %s ", p)
 		if i == m.page {
-			label = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("24")).Foreground(lipgloss.Color("255")).Render(label)
+			label = m.styles.selected.Render("[" + p + "]")
 		}
 		b.WriteString(label)
 	}
 	b.WriteString("\n\n")
 	if m.form != nil {
-		b.WriteString(heading.Render(m.form.title) + "\n\n")
+		b.WriteString(m.styles.heading.Render(m.form.title) + "\n\n")
 		for i, in := range m.form.inputs {
 			b.WriteString(m.form.labels[i] + "\n" + in.View() + "\n\n")
 		}
-		b.WriteString(muted.Render("Enter next/save · Tab switch field · Esc cancel"))
+		b.WriteString(m.styles.muted.Render("Enter next/save · Tab switch field · Esc cancel"))
 	} else {
 		s := m.app.State()
 		switch m.page {
@@ -68,9 +60,9 @@ func (m Model) content() string {
 			if m.recovery != nil {
 				b.WriteString("Recovery        " + m.recovery.Status + " · " + m.recovery.Phase + "\nOpen Restore for progress, review and settings Undo.\n\n")
 			}
-			status := warning.Render(s.Status)
+			status := m.styles.warning.Render(s.Status)
 			if s.Status == "Healthy" {
-				status = healthy.Render(s.Status)
+				status = m.styles.healthy.Render(s.Status)
 			}
 			b.WriteString("Status          " + status + "\n")
 			repo := m.app.Profile.Repository
@@ -80,12 +72,12 @@ func (m Model) content() string {
 			b.WriteString("Destination     " + repo + "\nConnection      " + stamp(s.LastConnection) + "\nLast backup     " + stamp(s.LastBackup) + "\nRestore checked " + stamp(s.LastVerified) + "\nNext backup     " + m.next + "\n")
 			b.WriteString(fmt.Sprintf("Last snapshot   %s · %d files · %s\n", short(s.Snapshot), s.Files, size(s.Bytes)))
 			if s.LastError != "" {
-				b.WriteString(warning.Render(ansi.Wrap("Last issue: "+s.LastError, max(1, m.width-4), "")) + "\n")
+				b.WriteString(m.styles.failure.Render(ansi.Wrap("Last issue: "+s.LastError, max(1, m.width-4), "")) + "\n")
 			}
 			if m.quota != nil {
 				b.WriteString(fmt.Sprintf("Cloud storage   %s used / %s total · %s free\n", size(m.quota.Used), size(m.quota.Total), size(m.quota.Free)))
 			}
-			b.WriteString("\n" + heading.Render("Included") + "\n")
+			b.WriteString("\n" + m.styles.heading.Render("Included") + "\n")
 			for _, g := range m.app.Groups() {
 				check := " "
 				if g.Selected {
@@ -96,7 +88,7 @@ func (m Model) content() string {
 			b.WriteString("\n[b] Back up now   [v] Verify backup   Tab: navigate")
 		case 1:
 			if m.connectorError != "" {
-				b.WriteString(warning.Render(ansi.Wrap(m.connectorError+"\n[i] Install rclone (administrator authentication)", max(1, m.width-4), "")) + "\nLocal-folder backups remain available.\n\n")
+				b.WriteString(m.styles.warning.Render(ansi.Wrap(m.connectorError+"\n[i] Install rclone (administrator authentication)", max(1, m.width-4), "")) + "\nLocal-folder backups remain available.\n\n")
 			}
 			b.WriteString("[d] Connect Dropbox   [o] Connect OneDrive   [l] Local folder\n[t] Test current destination   Enter: use selected connection\n\n")
 			if len(m.remotes) == 0 {
@@ -113,7 +105,7 @@ func (m Model) content() string {
 				}
 				b.WriteString(cursor + r.Type + " · " + r.Name + "\n")
 			}
-			b.WriteString("\nCurrent destination: " + m.app.Profile.Repository + "\n\n" + muted.Render("Google Drive: use an existing rclone connection with your own OAuth client.\nCloud sign-in opens your browser; the connection test writes and reads a tiny probe."))
+			b.WriteString("\nCurrent destination: " + m.app.Profile.Repository + "\n\n" + m.styles.muted.Render("Google Drive: use an existing rclone connection with your own OAuth client.\nCloud sign-in opens your browser; the connection test writes and reads a tiny probe."))
 		case 2:
 			b.WriteString("Space: toggle group/exclusion   Enter: expand tree\n[a] Add path   [d/Del] Remove custom path   [s] System configuration\n\n")
 			rows := m.contentRows()
@@ -157,7 +149,7 @@ func (m Model) content() string {
 				}
 				b.WriteString(prefix + label + "\n")
 			}
-			b.WriteString("\n" + muted.Render("App settings can live outside common config folders. Add explicit paths when needed.\nDocuments, browser profiles, caches and local mail are excluded by default."))
+			b.WriteString("\n" + m.styles.muted.Render("App settings can live outside common config folders. Add explicit paths when needed.\nDocuments, browser profiles, caches and local mail are excluded by default."))
 		case 3:
 			if m.recovery != nil && !m.recoveryBrowse {
 				b.WriteString(m.recoveryView())
@@ -177,14 +169,15 @@ func (m Model) content() string {
 				}
 				b.WriteString(prefix + stamp(s.Time) + "  " + short(s.ID) + "  " + s.Hostname + "\n")
 			}
-			b.WriteString("\n" + muted.Render("Restore my setup prepares a review before installing apps and applying settings.\nExtract files only writes into a separate empty folder.\nSystem configuration is staged for selective administrator review."))
+			b.WriteString("\n" + m.styles.muted.Render("Restore my setup prepares a review before installing apps and applying settings.\nExtract files only writes into a separate empty folder.\nSystem configuration is staged for selective administrator review."))
 		case 4:
 			calendar := m.app.Profile.Schedule
 			if calendar == "" {
 				calendar = "Off"
 			}
+			b.WriteString("[t] Theme                " + m.themeLabel() + "\n")
 			b.WriteString(fmt.Sprintf("[n] Name                 %s\n[p] Recovery password    Set/unlock in the desktop keyring\n[s] Schedule             %s\n[k] Keep snapshots       %d\n[x] Export encrypted recovery profile\n[i] Import recovery profile\n[e] Advanced profile     %s\n", m.app.Profile.Name, calendar, m.app.Profile.KeepLast, m.app.ProfilePath()))
-			b.WriteString("\n" + muted.Render("Save the recovery password in Bitwarden. Export/import uses that same password.\nImported profiles have scheduling disabled. Cloud sign-in may be needed again.\nScheduled backups need an unlocked desktop keyring and an active user session."))
+			b.WriteString("\n" + m.styles.muted.Render("Save the recovery password in Bitwarden. Export/import uses that same password.\nImported profiles have scheduling disabled. Cloud sign-in may be needed again.\nScheduled backups need an unlocked desktop keyring and an active user session."))
 		case 5:
 			data, _ := os.ReadFile(filepath.Join(m.app.StateDir, "activity.log"))
 			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
@@ -193,27 +186,31 @@ func (m Model) content() string {
 		}
 	}
 	if m.busy {
-		b.WriteString("\n\n" + m.spinner.View() + " " + heading.Render(m.progress.Phase))
+		b.WriteString("\n\n" + m.spinner.View() + " " + m.styles.heading.Render(m.progress.Phase))
 		if m.progress.TotalBytes > 0 {
 			b.WriteString(fmt.Sprintf(" · %s / %s", size(m.progress.Bytes), size(m.progress.TotalBytes)))
 		}
 		b.WriteString("  Esc: cancel")
 	} else if m.refreshing {
-		b.WriteString("\n\n" + m.spinner.View() + " " + muted.Render("Refreshing connections, storage and schedule…"))
+		b.WriteString("\n\n" + m.spinner.View() + " " + m.styles.muted.Render("Refreshing connections, storage and schedule…"))
 	}
-	message := ansi.Wrap(m.message, max(1, m.width-4), "")
+	message := m.message
 	if m.failed {
-		message = warning.Render(message)
+		message = "Error: " + message
+	}
+	message = ansi.Wrap(message, max(1, m.width-4), "")
+	if m.failed {
+		message = m.styles.failure.Render(message)
 	}
 	b.WriteString("\n\n" + message)
 	if m.confirmQuit {
-		b.WriteString("\n" + warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
+		b.WriteString("\n" + m.styles.warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
 	}
 	return b.String()
 }
 
 func (m Model) layout() ([]string, string, string, int) {
-	help := muted.Render(ansi.Wrap("PgUp/PgDn scroll · Tab/Shift+Tab pages · ↑↓ select · q quit", max(1, m.width-4), ""))
+	help := m.styles.muted.Render(ansi.Wrap("PgUp/PgDn scroll · Tab/Shift+Tab pages · ↑↓ select · q quit", max(1, m.width-4), ""))
 	lines := strings.Split(m.content(), "\n")
 	count := min(3, len(lines))
 	header := strings.Join(lines[:count], "\n")

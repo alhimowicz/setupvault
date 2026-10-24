@@ -23,6 +23,7 @@ type Profile struct {
 	Version       int      `json:"version"`
 	ID            string   `json:"id"`
 	Name          string   `json:"name"`
+	Theme         string   `json:"theme,omitempty"`
 	Home          string   `json:"home"`
 	Repository    string   `json:"repository"`
 	RcloneConfig  string   `json:"rclone_config,omitempty"`
@@ -126,7 +127,7 @@ func New(configDir, stateDir string) (*App, error) {
 	}
 	name, _ := os.Hostname()
 	a := &App{ConfigDir: configDir, StateDir: stateDir, Profile: Profile{
-		Version: 1, ID: randomID(), Name: name, Home: home, KeepLast: 7,
+		Version: 1, ID: randomID(), Name: name, Home: home, KeepLast: 7, Theme: "terminal",
 		Selected: []string{"gnome", "apps", "settings"},
 	}}
 	a.Profile.Excludes = DefaultExclusions(home)
@@ -155,6 +156,9 @@ func (a *App) ProfilePath() string  { return filepath.Join(a.ConfigDir, "profile
 func (a *App) InventoryDir() string { return filepath.Join(a.StateDir, "inventory") }
 
 func (p Profile) Validate() error {
+	if p.Theme != "" && p.Theme != "terminal" && p.Theme != "monochrome" {
+		return errors.New("theme must be terminal or monochrome")
+	}
 	if p.Version != 1 {
 		return fmt.Errorf("unsupported profile version %d", p.Version)
 	}

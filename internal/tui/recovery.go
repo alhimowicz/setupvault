@@ -49,13 +49,13 @@ var recoveryLabels = map[string]string{"apps": "Reinstall RPM / Flatpak apps", "
 func (m Model) recoveryView() string {
 	j := m.recovery
 	var b strings.Builder
-	b.WriteString(heading.Render("Restore my setup") + "\nJob " + j.ID + " · " + j.Status + "\n")
+	b.WriteString(m.styles.heading.Render("Restore my setup") + "\nJob " + j.ID + " · " + j.Status + "\n")
 	b.WriteString(ansi.Wrap(j.Phase, max(1, m.width-4), "") + "\n")
 	if j.Active() {
 		b.WriteString(m.spinner.View() + " Running in the background. q leaves it running.\n")
 	}
 	if j.Error != "" {
-		b.WriteString(warning.Render(ansi.Wrap(j.Error, max(1, m.width-4), "")) + "\n")
+		b.WriteString(m.styles.failure.Render(ansi.Wrap(j.Error, max(1, m.width-4), "")) + "\n")
 	}
 	if m.recoveryMode == "undo" {
 		b.WriteString("\nUndo settings changes?\nPrevious user files and desktop keys will be restored.\nNewer edits will be preserved. Installed packages remain installed.\n\nEnter: Undo settings   Esc: Back\n")

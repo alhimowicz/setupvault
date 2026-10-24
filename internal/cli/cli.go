@@ -47,6 +47,7 @@ type options struct {
 	config, state, file, snapshot, target, passwordFile                            string
 	json, nonInteractive, passwordStdin, storePassword, allowInteraction, progress bool
 	name, repository, selected, rcloneConfig, calendar, provider                   string
+	theme                                                                          string
 	keep, lines                                                                    int
 	include, exclude, removeInclude, removeExclude                                 list
 	timeout                                                                        time.Duration
@@ -95,6 +96,7 @@ func Run(ctx context.Context, args []string, version string, in io.Reader, out, 
 	f.BoolVar(&o.allowInteraction, "allow-interaction", false, "Allow requested browser sign-in or administrator/keyring authentication")
 	f.BoolVar(&o.progress, "progress", false, "Backup progress on stderr; JSON lines with --json")
 	f.StringVar(&o.name, "name", "", "With --set-config: profile name")
+	f.StringVar(&o.theme, "theme", "terminal", "With --set-config: terminal or monochrome")
 	f.StringVar(&o.repository, "repository", "", "With --set-config: absolute folder or rclone:remote:folder")
 	f.StringVar(&o.selected, "select", "", "With --set-config: replace groups, comma-separated; empty selects none")
 	f.IntVar(&o.keep, "keep-last", 7, "With --set-config: retained snapshots, 1–10000")
@@ -340,7 +342,7 @@ func validateFlags(action string, seen map[string]bool, o *options) error {
 	case "recovery-status":
 		add("job")
 	case "set-config":
-		add("name", "repository", "select", "keep-last", "rclone-config", "include", "exclude", "remove-include", "remove-exclude")
+		add("name", "theme", "repository", "select", "keep-last", "rclone-config", "include", "exclude", "remove-include", "remove-exclude")
 	case "backup":
 		add("password-file", "password-stdin", "progress")
 	case "verify", "snapshots":
@@ -392,6 +394,9 @@ func execute(ctx context.Context, a *vault.App, action string, o *options, seen 
 		p := a.Profile
 		if seen["name"] {
 			p.Name = o.name
+		}
+		if seen["theme"] {
+			p.Theme = o.theme
 		}
 		if seen["repository"] {
 			p.Repository = o.repository

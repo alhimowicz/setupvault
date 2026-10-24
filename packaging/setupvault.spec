@@ -1,8 +1,8 @@
 %global debug_package %{nil}
 
 Name:           setupvault
-Version:        0.3.0
-Release:        5%{?dist}
+Version:        0.3.1
+Release:        1%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
 URL:            https://github.com/alhimowicz/setupvault
@@ -77,6 +77,10 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.3.1-1
+- Follow the terminal ANSI palette and inherit default foreground/background
+- Add a saved monochrome preference and honor all nonempty NO_COLOR values
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.3.0-1
 - Add reviewed asynchronous app and settings recovery with resume and settings undo
 - Restore terminal and shell preferences and report missing cloud dependencies

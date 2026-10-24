@@ -16,6 +16,7 @@ func (m *Model) openForm(kind, title string, labels, values []string, password b
 	f := &form{kind: kind, title: title, labels: labels}
 	for i, value := range values {
 		in := textinput.New()
+		in.SetStyles(m.styles.input)
 		in.SetWidth(max(20, min(m.width-12, 88)))
 		in.CharLimit = 4096
 		in.SetValue(value)

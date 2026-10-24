@@ -73,19 +73,22 @@ type Model struct {
 	recoveryBrowse              bool
 	recoveryJobs                []vault.RecoveryJob
 	connectorError              string
+	styles                      themeStyles
 }
 
 func New(a *vault.App) Model {
-	return Model{
+	m := Model{
 		app:        a,
 		width:      100,
 		height:     30,
 		next:       "Checking schedule…",
 		expanded:   map[string]bool{},
 		message:    "Choose a connection, review Contents, and set a recovery password to begin.",
-		spinner:    spinner.New(spinner.WithSpinner(spinner.Points), spinner.WithStyle(heading)),
+		spinner:    spinner.New(spinner.WithSpinner(spinner.Points)),
 		refreshing: true,
 	}
+	m.applyTheme()
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -181,6 +184,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.failed = true
 		} else {
 			m.app = a
+			m.applyTheme()
 			m.message = "Profile reloaded"
 			m.failed = false
 		}
@@ -211,6 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scroll = m.maxScroll()
 		if a, err := vault.New(m.app.ConfigDir, m.app.StateDir); err == nil {
 			m.app = a
+			m.applyTheme()
 		}
 		if msg.snapshots != nil {
 			m.snapshots = msg.snapshots
