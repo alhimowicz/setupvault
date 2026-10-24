@@ -1,0 +1,307 @@
+SetupVault: guided setup recovery
+Status: proposed design; automatic recovery is not implemented yet.
+
+Outcome
+After reinstalling Fedora or moving to another PC, import the encrypted recovery
+profile, reconnect the cloud account if necessary, choose a backup and press
+Restore my setup. SetupVault reinstalls available apps, restores selected files
+and applies compatible desktop preferences. It shows exactly what succeeded,
+what still needs attention and where to resume.
+
+Normal recovery has one review screen and one Start recovery action. Installing
+software runs asynchronously: navigation stays responsive, closing the TUI leaves
+the recovery running, and reopening it shows the same job. Settings are applied
+after their applications are ready. The CLI uses the same recovery engine.
+
+User flow
+1. Import profile and unlock it with the existing recovery password.
+   Show: Profile imported. Next: Restore my setup.
+   Reconnect the cloud account only when the saved connection is unavailable.
+   Keep backup scheduling disabled throughout recovery.
+2. Choose a dated snapshot; highlight the newest completed snapshot by default.
+   Offer Restore my setup and Extract files only. The latter keeps today's safe
+   restore-to-an-empty-folder behavior.
+3. Prepare the selected recovery in a private staging directory. Show download
+   and verification progress while the TUI stays usable. Read inventory, validate
+   the snapshot, check disk space and resolve the target PC's package transactions.
+   This step writes staging data, not live user settings or installed packages.
+4. Review one concrete plan. Missing apps are selected; installed apps are shown
+   as already present. Captured user settings, GNOME, terminal/shell files and
+   manual apps are selected when their backup groups were included. Show settings
+   replacements, kept copies, package sources, download size and unresolved items.
+5. Start recovery. Request administrator authentication if the selected plan
+   needs it, then launch the background job. Show progress and leave navigation
+   available. Closing the TUI detaches; it does not cancel this recovery job.
+6. Show a completion report, Retry failed items, Undo settings changes and Open
+   report. Offer Log out when needed for desktop changes. Never log out or reboot
+   automatically. Scheduling can be enabled explicitly after recovery succeeds.
+
+The existing Settings -> Import action remains available. Import alone never
+installs packages or applies settings. It leads directly to the recovery flow.
+
+Example review screen (illustrative counts, not the current PC)
+
+  Restore my setup
+  Backup: Z13 / selected dated snapshot     Target: this Fedora PC
+
+  [x] Apps                  18 to install; 12 already present
+  [x] App settings          240 files; 16 existing files will be replaced
+  [x] Terminal and shell    Zsh, terminal preferences and prompt configuration
+  [x] GNOME                 Preferences, themes, wallpaper and extensions
+  [x] Manual apps           AppImages, local executables and plugins
+  [x] Custom home paths     Only the paths actually present in this snapshot
+  [ ] System configuration  Review separately
+
+  Replacement copies will be kept for Undo settings changes.
+  Attention: 1 unavailable package; 1 incompatible extension
+  Downloads: estimated app packages     Restore files: verified staging data
+
+  [Start recovery]  [Edit selection]  [View details]  [Back]
+
+A normal fresh install should require no per-file prompts. Advanced details show
+individual apps, files, diffs, repository identities and compatibility decisions.
+Unresolved selected items must be explicitly skipped or resolved before Start.
+
+Example running screen
+
+  Recovery running                         Job: recovery-...
+  [done] Verify backup and prepare files
+  [done] Prepare approved application sources
+  [....] Install apps                       6 of 18
+         Flatpak: downloading runtime       progress when available
+  [wait] Restore manual apps and user settings
+  [wait] Apply terminal/shell and GNOME preferences
+  [wait] Verify results
+
+  [Details]  [Stop after current transaction]  [Leave running]
+
+The header and navigation footer remain visible at 80x24. Lists and long reasons
+scroll. Each item has a plain-language reason, action and current state. Use real
+byte/count progress when available and animated dots otherwise; never invent a
+percentage. A package-count total includes selected apps; dependency downloads
+and the current package transaction have their own progress.
+
+What each category does
+
+RPM apps
+Use the recorded package identifiers to install missing applications from sources
+available for the target Fedora release and architecture. Keep already installed
+apps. Show dependency changes before Start. Do not downgrade, remove unrelated
+packages or substitute an app silently. Kernel, bootloader and hardware-driver
+packages are excluded from the default app plan and shown for separate review.
+Unknown or ambiguous package roles are review items rather than guessed apps.
+Unavailable/renamed packages are reported individually with their original name.
+Use DNF's resolved/stored transaction representation for the preview and approved
+operations, rather than scraping translated terminal text. Revalidate package
+state before execution; changed transactions return to review. Never load an
+arbitrary transaction supplied inside the backup and replay it as root.
+
+Flatpak apps
+Use app ID, origin, branch and installation scope. Preserve user/system scope by
+default; a missing custom installation needs an explicit target mapping. Resolve
+the target architecture and required runtimes. A remote name alone is insufficient:
+compare its URL and signing identity. Branch or source substitutions require a
+revised plan; unrelated apps are not upgraded as a side effect of Restore my setup.
+
+Application sources
+Use configured trusted sources first. Missing third-party sources appear in the
+plan with their URL and signing identity and require explicit selection. Never
+blindly copy old repository configuration into the new machine or disable
+signature checks. Subscription/licensed sources can need sign-in. An unavailable
+source blocks its selected apps, not a successful restore of unrelated categories.
+
+Manual apps and AppImages
+Copy the actual backed-up files into the mapped home paths, retaining executable
+permissions. This includes AppImages, local scripts/binaries, extracted apps and
+audio plugins. Check architecture and report unresolved symlink targets. Record
+the result as Files restored; that alone does not prove an old binary will run
+with the new OS libraries. Do not launch apps or copied scripts automatically.
+If the binary was not backed up, report Not in backup; never guess a download URL.
+
+App settings and custom paths
+Copy the backed-up files into their new home locations. Close affected running
+apps before replacing their configuration; show Close app and Retry when needed.
+Settings for an app that could not be installed are retained in staging and
+reported, with an option to apply them anyway. Custom paths outside the old home
+require a target mapping and any necessary system-file review.
+Apply Flatpak permissions/overrides through the reviewed settings plan; never
+overwrite the new installation's package-manager database with an old copy.
+Keep SetupVault's own state, connection credentials and timer enablement out of
+generic file application. Scheduling is recreated explicitly after recovery.
+
+Terminal and shell settings
+Restore terminal configs under ~/.config and the captured shell files. Extend
+future backups to include existing ~/.profile, ~/.bashrc, ~/.bash_profile,
+~/.bash_aliases, ~/.inputrc, ~/.zshrc, ~/.zprofile, ~/.zshenv, ~/.zlogin,
+~/.p10k.zsh and ~/.oh-my-zsh. Fish, Kitty, Alacritty and similar configurations
+remain covered by their ~/.config paths. Restore GNOME Terminal settings through
+the selected GNOME preferences, along with captured fonts and themes.
+Show files missing from older backups as Not captured. Do not claim they can be
+recovered. Install a chosen shell if available, but leave the account's login
+shell unchanged unless Change login shell is explicitly selected. Never source
+restored shell files to test them: doing so would execute their contents.
+
+GNOME
+Restore user themes, icons, fonts, backgrounds and extension files. Apply the
+selected dconf preferences after apps and files are ready. Default to desktop
+appearance, favorites, keybindings, terminal and extension preferences. Keep the
+new machine's monitor layout, device bindings, network/account configuration and
+other machine-specific settings unless individually reviewed. Apply only keys
+supported on the target; report locked or removed keys.
+Check extension compatibility with the target GNOME Shell before enabling it.
+Keep incompatible extensions disabled and explain why. System extensions come
+from their packages, not copies overwriting /usr/share. A logout/login can still
+be necessary to complete the desktop changes.
+
+System configuration
+System changes are deselected by default and have a separate file/diff review.
+The first automatic-recovery implementation stages the existing system archive
+for review; it does not extract arbitrary /etc or /usr/local files over the live
+system. The result must say System configuration staged, not System restored.
+Selective automatic system-file application is a subsequent feature with a
+restricted privileged helper and an explicit supported-path list. Account
+databases, host identity, boot/storage configuration and hardware settings are
+never part of a generic restore-everything action.
+
+Existing files, new users and Undo
+Map paths below the old home to the target user's home and ownership. Preserve
+the target user's accounts and existing cloud connection credentials. Rewrite
+known desktop/background references when mapped files move; do not perform a
+blanket string replacement inside every app's config. Show unresolved embedded
+paths and symlinks instead of silently changing them.
+
+For selected user files: create missing files, skip identical files, and preserve
+a private pre-change copy before replacing different files. Show replacement
+counts/diffs in the plan. Revalidate destinations before applying: refuse path
+traversal, symlink escapes or changes since the reviewed plan. Write temporary
+files beside the destination and atomically replace where supported. Use target
+OS labeling and current ownership rather than importing old machine identities.
+
+Save the old dconf values before changing selected keys. Undo settings changes
+restores the saved user files and keys. If the user changed a file again after
+recovery, Undo requires a conflict decision instead of discarding that new work.
+Package installation is not a full OS rollback: report new app installs and
+transaction IDs separately. Do not promise to reverse dependencies, package
+scripts or system upgrades through the settings Undo button.
+
+Asynchronous execution
+Use on-demand systemd jobs, already a Fedora dependency, rather than a permanent
+SetupVault daemon or HTTP server. The TUI starts a job, reads its stored status
+and follows progress; it never waits for a DNF process on its update/render path.
+The CLI and TUI can reconnect to the same job ID. Read-only status and details
+remain available while other mutations of that profile are blocked.
+
+Run one recovery job per profile. Queue package work; use one DNF transaction at
+a time, and respect Flatpak installation locks. Let the package managers manage
+their own download concurrency. After packages, copy manual apps and settings,
+then apply GNOME preferences and validate the result. An unavailable optional
+app can be skipped explicitly while the other selected work continues.
+
+The verified data is staged before the detached application job starts, so the
+worker does not need the backup password in a job file, arguments or environment.
+Preparation uses the existing password pipe/keyring behavior and can be canceled
+when the frontend closes. A later attempt can reuse completed verified staging
+data after checking it again. Staging and rollback directories are private and
+excluded from subsequent backups; no recovery secrets enter status/event logs.
+
+For system package work, the foreground Start action obtains polkit authorization
+for the concrete plan. An installed restricted helper validates the requested
+package operations, copies the approved privileged portion into root-owned job
+storage, and starts a system job that survives the TUI. The user worker performs
+user Flatpaks and settings, and follows the privileged job's result. A prepared
+job cannot ask an unprivileged service to run arbitrary root commands or execute
+scripts read from a backup. Root never runs the whole TUI or decrypts/restores a
+home snapshot. Changed package transactions require a new reviewed plan.
+Package identifiers and helper requests are parsed as bounded structured data;
+they cannot become shell syntax, command options or arbitrary local RPM paths.
+The helper resolves from approved sources itself and compares the result with
+the reviewed operations before starting a transaction.
+
+Closing the TUI means Leave running. Cancel requests stop at a safe boundary;
+an active package commit can need to finish first. Downloads and file work stop
+gracefully where supported. The UI says Finishing current transaction when this
+is the actual state. Completed work remains recorded. After a crash or logout,
+show Interrupted and offer Resume; reconcile real package/file state before
+retrying. User-session logout is not a guarantee of unattended user-file work.
+
+Job state is separate from backup health. Store private plan/progress/report and
+rollback data under the existing SetupVault state directory, keyed by a job ID.
+Keep selected snapshot ID, source/target facts, approved operations, per-item
+results and checkpoints. Use atomic state updates. Overall states are Ready,
+Queued, Running, Waiting for action, Finishing transaction, Completed, Partial,
+Failed, Canceled and Interrupted. A stopped or partially successful job never
+becomes Completed simply because its worker exited.
+
+CLI contract (proposed new flags, not available in the installed version)
+
+  setupvault --plan-recovery --snapshot latest --json --progress \
+    --password-file /private/recovery-password
+
+Prepares and verifies staged data and returns a job ID plus the concrete plan.
+It can download backup data and write private staging files, but does not install
+apps or overwrite live settings. A snapshot selection resolves to an immutable ID.
+The default selection follows the chosen snapshot, with system changes off.
+Recovery selections can be edited before creating the final plan.
+
+  setupvault --apply-recovery --job recovery-ID --json --allow-interaction
+
+Confirms that exact plan, obtains required authentication and queues asynchronous
+execution. Returns promptly with the job ID and Queued/Running state. Exit 0 here
+means job accepted, not recovery complete. Noninteractive clients without the
+required authorization get interaction_required; they never hang on a prompt.
+
+  setupvault --recovery-status --job recovery-ID --json
+  setupvault --resume-recovery --job recovery-ID --json
+  setupvault --cancel-recovery --job recovery-ID --json
+  setupvault --undo-recovery-settings --job recovery-ID --json
+
+Add --wait to apply/resume when a script needs the final outcome. With --progress,
+stderr streams structured events and stdout remains one final JSON response.
+Without --wait, clients poll status. A --wait timeout stops waiting and leaves
+the job running; --cancel-recovery requests cancellation explicitly. Reuse the
+existing success/invalid/interaction/timeout/cancellation exit conventions, and
+return a nonzero final code for Partial or Failed. Reports retain per-item reasons.
+The existing --restore continues to extract files into a separate empty folder.
+
+Inventory and compatibility work needed before implementation
+Keep reading the current text inventories for existing backups, with explicit
+Unknown source/architecture/role review when information is missing. Future
+backups add a versioned recovery inventory containing source Fedora/GNOME and
+architecture, RPM name/architecture/version/origin/install reason, Flatpak app
+ID/origin URL/key identity/branch/scope, manual-file architecture where known,
+GNOME extension metadata and the category/source path for captured settings.
+Do not save credentials or executable recovery commands in this inventory.
+Keep backup and inventory schema versions independent; old snapshots remain
+extractable even if some automatic recovery steps need review.
+
+Implementation boundaries
+Keep restic encryption, cloud connections, profile import and file extraction.
+Add recovery planning/job state, package operations and settings application as
+separate responsibilities in internal/vault. Add the guided screens under
+internal/tui and flags under internal/cli. Add the scoped package worker/helper
+and on-demand systemd job packaging. Both interfaces call the same engine.
+Do not build a plugin framework, web UI, new cloud integration or universal
+cross-distribution package translator for this feature.
+
+Acceptance tests before calling it automatic recovery
+Use the existing Fedora VM test workflow, but extend it to install real apps and
+apply settings rather than only verify extraction. Test a fresh target account
+and another home path; RPM and user/system Flatpak apps; manual executable and
+symlink handling; terminal/shell/prompt files; real GNOME preferences, fonts,
+favorites and compatible/incompatible extensions. Prove the TUI stays responsive
+through slow installs, detaches/reconnects, and displays progress/reasons at80x24.
+Test network failure, unavailable apps, changed plans, active package-manager
+locks, cancellation during downloads and commits, process death, resume, conflicting
+files and Undo. Assert that normal recovery preserves machine identity, selected
+newer user edits and cloud access. Validate old-inventory recovery explicitly.
+Completed requires installed-app queries, applied-file checks and GNOME readback;
+it does not require automatically launching copied apps or executing shell files.
+
+Technical references checked for this design
+DNF5 repoquery: https://dnf5.readthedocs.io/en/stable/commands/repoquery.8.html
+DNF5 install/store: https://dnf5.readthedocs.io/en/stable/commands/install.8.html
+DNF5 replay: https://dnf5.readthedocs.io/en/stable/commands/replay.8.html
+Flatpak scopes/remotes: https://docs.flatpak.org/en/latest/using-flatpak.html
+GNOME system extensions: https://help.gnome.org/system-admin-guide/extensions-enable.html
+GNOME extension metadata: https://gjs.guide/extensions/overview/anatomy.html
+Installed dnf5/flatpak help and the current SetupVault source/inventory formats.

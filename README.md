@@ -106,6 +106,8 @@ Packaged applications are represented by installation lists, not copies of RPMs 
 
 **This first version stages restored files and installation lists; applying settings and reinstalling packages remain manual.** It is not an OS image, and cannot promise identical hardware-dependent settings or that an old package still exists.
 
+The [guided recovery design](docs/recovery-design.txt) proposes automatic app installation and settings application with background progress, resume and settings undo. It describes planned behavior, not an implemented feature.
+
 If you lose the profile file but have the password, choose the existing repository, set its password, and load Restore. Snapshots remain standard [restic repositories](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html), recoverable without SetupVault.
 
 ## Encryption and scheduling
