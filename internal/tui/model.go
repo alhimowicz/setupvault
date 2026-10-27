@@ -141,6 +141,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.resizeInputs()
+		m.scroll = min(m.scroll, m.maxScroll())
+		m.keepSelectionVisible()
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(tick(), m.refresh())
@@ -248,6 +251,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.handleKey(msg)
 		if m.message != previous {
 			m.scroll = m.maxScroll()
+		} else if key := msg.String(); key != "pgup" && key != "pgdown" {
+			m.keepSelectionVisible()
 		}
 		return m, cmd
 

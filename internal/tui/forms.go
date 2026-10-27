@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/alhimowicz/setupvault/internal/vault"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m *Model) openForm(kind, title string, labels, values []string, password bool) tea.Cmd {
@@ -17,7 +18,6 @@ func (m *Model) openForm(kind, title string, labels, values []string, password b
 	for i, value := range values {
 		in := textinput.New()
 		in.SetStyles(m.styles.input)
-		in.SetWidth(max(20, min(m.width-12, 88)))
 		in.CharLimit = 4096
 		in.SetValue(value)
 		if password {
@@ -29,7 +29,19 @@ func (m *Model) openForm(kind, title string, labels, values []string, password b
 		f.inputs = append(f.inputs, in)
 	}
 	m.form = f
+	m.resizeInputs()
 	return textinput.Blink
+}
+
+func (m *Model) resizeInputs() {
+	if m.form == nil {
+		return
+	}
+	for i := range m.form.inputs {
+		in := &m.form.inputs[i]
+		in.SetWidth(max(1, min(88, m.contentWidth()-ansi.StringWidth(in.Prompt)-1)))
+		in.SetCursor(in.Position())
+	}
 }
 
 func (m *Model) submit() tea.Cmd {

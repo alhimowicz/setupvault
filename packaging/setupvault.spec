@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           setupvault
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        Encrypted Fedora and GNOME setup backups in a terminal
 License:        MIT AND BSD-3-Clause
@@ -77,6 +77,10 @@ fi
 %{_tmpfilesdir}/setupvault.conf
 
 %changelog
+* Tue Oct 27 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.3.2-1
+- Wrap all terminal content before scrolling and use compact narrow-window navigation
+- Resize active inputs and keep focused fields and selected rows visible
+
 * Sat Oct 24 2026 Denis Alhimovich <alhimowicz@gmail.com> - 0.3.1-1
 - Follow the terminal ANSI palette and inherit default foreground/background
 - Add a saved monochrome preference and honor all nonempty NO_COLOR values

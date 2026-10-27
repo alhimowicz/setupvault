@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -50,7 +48,11 @@ func (m Model) content() string {
 	if m.form != nil {
 		b.WriteString(m.styles.heading.Render(m.form.title) + "\n\n")
 		for i, in := range m.form.inputs {
-			b.WriteString(m.form.labels[i] + "\n" + in.View() + "\n\n")
+			label := "  " + m.form.labels[i]
+			if i == m.form.focus {
+				label = m.styles.heading.Render("▸ " + m.form.labels[i])
+			}
+			b.WriteString(label + "\n" + in.View() + "\n\n")
 		}
 		b.WriteString(m.styles.muted.Render("Enter next/save · Tab switch field · Esc cancel"))
 	} else {
@@ -207,31 +209,6 @@ func (m Model) content() string {
 		b.WriteString("\n" + m.styles.warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
 	}
 	return b.String()
-}
-
-func (m Model) layout() ([]string, string, string, int) {
-	help := m.styles.muted.Render(ansi.Wrap("PgUp/PgDn scroll · Tab/Shift+Tab pages · ↑↓ select · q quit", max(1, m.width-4), ""))
-	lines := strings.Split(m.content(), "\n")
-	count := min(3, len(lines))
-	header := strings.Join(lines[:count], "\n")
-	room := max(1, m.height-2-lipgloss.Height(help)-count)
-	return lines[count:], header, help, room
-}
-
-func (m Model) maxScroll() int {
-	lines, _, _, room := m.layout()
-	return max(0, len(lines)-room)
-}
-
-func (m Model) View() tea.View {
-	lines, header, help, room := m.layout()
-	start := max(0, min(m.scroll, len(lines)-room))
-	end := min(len(lines), start+room)
-	content := header + "\n" + strings.Join(lines[start:end], "\n")
-	content += strings.Repeat("\n", max(1, room-(end-start)+1)) + help
-	v := tea.NewView(lipgloss.NewStyle().Padding(1, 2).MaxWidth(max(1, m.width)).MaxHeight(max(1, m.height)).Render(content))
-	v.AltScreen = true
-	return v
 }
 
 func short(s string) string {

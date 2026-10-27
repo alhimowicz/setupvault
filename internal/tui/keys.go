@@ -37,6 +37,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return tea.Quit
 	}
+	if key == "pgup" || key == "pgdown" {
+		lines, _, _, room := m.layout()
+		step := room
+		if key == "pgup" {
+			step = -step
+		}
+		m.scroll = max(0, min(max(0, len(lines)-room), m.scroll+step))
+		return nil
+	}
 	if m.form != nil {
 		if key == "esc" {
 			m.form = nil
@@ -86,14 +95,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.cancel()
 		}
 		m.message = "Canceling; waiting for the backup engine to stop"
-		return nil
-	}
-	if key == "pgup" || key == "pgdown" {
-		step := max(1, m.height-6)
-		if key == "pgup" {
-			step = -step
-		}
-		m.scroll = max(0, min(m.maxScroll(), m.scroll+step))
 		return nil
 	}
 	if m.busy {

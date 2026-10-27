@@ -92,7 +92,7 @@ func (m Model) recoveryView() string {
 			if i == cursor {
 				prefix = "> "
 			}
-			b.WriteString(ansi.Wrap(fmt.Sprintf("%s[%s] %s %s [%s] %s", prefix, mark, p.Kind, p.Name, p.Status, p.Reason), max(1, m.width-4), "") + "\n")
+			fmt.Fprintf(&b, "%s[%s] %s %s [%s] %s\n", prefix, mark, p.Kind, p.Name, p.Status, p.Reason)
 		}
 	case "files":
 		b.WriteString("\nSpace: select/deselect file   [g] Categories\n")
@@ -104,7 +104,7 @@ func (m Model) recoveryView() string {
 			if i == cursor {
 				prefix = "> "
 			}
-			b.WriteString(ansi.Wrap(fmt.Sprintf("%s%s [%s] %s", prefix, f.Path, f.Status, f.Reason), max(1, m.width-4), "") + "\n")
+			fmt.Fprintf(&b, "%s%s [%s] %s\n", prefix, f.Path, f.Status, f.Reason)
 		}
 	case "details":
 		dir := filepath.Join(m.app.StateDir, "recovery", j.ID)

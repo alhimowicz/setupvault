@@ -31,7 +31,7 @@ Building requires Go 1.26 or newer. SetupVault runs as your desktop user. The in
 
 Tab / Shift+Tab changes pages, arrows select, Esc cancels a foreground task, and `q` quits. After recovery starts, `q` leaves its detached installer running; Restore → **c** requests a stop after the current transaction. The app has no persistent web server.
 
-Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. Page Up / Page Down scroll content on small terminals while navigation help stays visible. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
+Animated dots indicate background refreshes and running tasks. Long status messages and errors wrap to the terminal width. All screens wrap text to the available width, including explanatory text, paths, progress and recovery details. Narrow windows use a compact page header; Page Up / Page Down scroll content while navigation help stays visible, including inside forms. Input fields resize with the window and preserve their values. Windows smaller than 20 columns by 6 rows show a resize message. The advanced profile editor uses `$VISUAL`, then `$EDITOR`, or Nano/Vi when neither is configured; Nano's Ctrl+X returns to SetupVault.
 
 ## Terminal appearance
 
