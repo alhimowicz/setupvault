@@ -206,7 +206,7 @@ func (m Model) content() string {
 	}
 	b.WriteString("\n\n" + message)
 	if m.confirmQuit {
-		b.WriteString("\n" + m.styles.warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / any key to stay", max(1, m.width-4), "")))
+		b.WriteString("\n" + m.styles.warning.Render(ansi.Wrap("A task is running. Cancel it and quit? y / Esc to stay", max(1, m.width-4), "")))
 	}
 	return b.String()
 }

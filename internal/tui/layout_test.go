@@ -88,7 +88,7 @@ func TestAllPagesWrapEveryTextBlockWithoutCropping(t *testing.T) {
 		}
 		m.busy, m.confirmQuit = true, true
 		view := assertFits(t, m)
-		for _, text := range []string{m.progress.Phase, "A task is running. Cancel it and quit? y / any key to stay"} {
+		for _, text := range []string{m.progress.Phase, "A task is running. Cancel it and quit? y / Esc to stay"} {
 			if !strings.Contains(withoutSpace(view), withoutSpace(text)) {
 				t.Fatal("progress or confirmation was cropped", width)
 			}
@@ -196,5 +196,26 @@ func TestNarrowListSelectionRemainsVisible(t *testing.T) {
 		if !strings.Contains(assertFits(t, m), "> ") {
 			t.Fatalf("selected wrapped row scrolled out of view: cursor=%d scroll=%d\n%s", m.cursor, m.scroll, ansi.Strip(m.View().Content))
 		}
+	}
+}
+
+func TestQuitConfirmationCanScrollBeforeAnswering(t *testing.T) {
+	m := testModel(t)
+	m.width, m.height = 20, 8
+	m.busy, m.confirmQuit = true, true
+	m.message = strings.Repeat("Details of the current operation. ", 20)
+	m.scroll = m.maxScroll()
+	before := m.scroll
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if !m.confirmQuit || m.scroll >= before || m.quitting {
+		t.Fatal("scrolling dismissed or answered the quit confirmation")
+	}
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if !m.confirmQuit || m.scroll != before || m.quitting {
+		t.Fatal("confirmation did not remain scrollable")
+	}
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.confirmQuit || m.quitting || !m.busy {
+		t.Fatal("Escape did not keep the operation running")
 	}
 }
